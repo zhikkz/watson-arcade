@@ -50,7 +50,7 @@ button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
   padding:0;font-family:var(--font-pixel);font-size:.9em;line-height:1}
 #hud button.off{color:var(--dim);text-decoration:line-through}
 
-/* Zhen-ge speaking */
+/* Zhang Zhen speaking */
 .face{image-rendering:pixelated;background:#16203c;border:2px solid var(--cyan);flex:none}
 #dlg{position:absolute;left:2em;right:2em;top:4.6em;display:flex;gap:1em;align-items:flex-start;
   padding:1em 1.2em;background:rgba(9,13,28,.94);border:2px solid var(--cyan);box-shadow:0 0 0 2px #000,5px 5px 0 rgba(0,0,0,.55)}
@@ -103,9 +103,34 @@ button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 .stats dt{font-size:max(10px,1.05em);color:var(--dim)}
 .stats dd{margin:0;font-family:var(--font-pixel);font-size:max(14px,2em);color:var(--amber);font-variant-numeric:tabular-nums}
 
+/* Persistent wallet + skin shop */
+.wallet{margin:0;color:var(--amber);font-size:max(12px,1.3em);font-variant-numeric:tabular-nums}
+#title .wallet span{color:var(--dim);font-size:.9em;margin-left:.6em}
+#shop{justify-content:flex-start;gap:.65em;padding:1.5em 2em;overflow:auto;touch-action:pan-y;background:rgba(7,9,18,.96)}
+.shop-head{display:flex;align-items:center;justify-content:space-between;gap:1em;width:100%}
+#shop h2{font-size:max(24px,3em)}
+.shop-info{display:flex;flex-wrap:wrap;justify-content:center;gap:.4em 1.5em}
+.shop-info .lifetime{color:var(--dim)}
+.skin-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1em;width:100%;max-width:46em}
+.skin-card{min-width:0;padding:.5em;border:2px solid var(--line);background:var(--panel)}
+.skin-card.equipped{border-color:var(--cyan);box-shadow:0 0 16px rgba(69,240,223,.12)}
+.skin-preview{display:block;width:100%;height:7em;object-fit:contain;image-rendering:pixelated;background:radial-gradient(ellipse at bottom,#1d2b48,transparent 75%)}
+.skin-card h3{margin:.2em 0;font-family:var(--font-display);font-size:max(16px,1.9em);font-weight:400;color:var(--ink)}
+.skin-price{margin:.25em 0 .6em;color:var(--amber);font-size:max(11px,1.1em)}
+.skin-card .btn{width:100%;padding:.45em .2em;font-size:max(12px,1.25em);letter-spacing:0;box-shadow:2px 2px 0 #000}
+.btn:disabled{cursor:default;opacity:.55;transform:none;box-shadow:none}
+.shop-note{margin:0;font-size:max(11px,1.1em);line-height:1.45;color:var(--dim)}
+#shop-status{min-height:1.45em;color:var(--cyan)}
+#shop-status:empty{display:none}
+.narrow #title{gap:.65em;padding:1.3em 2em}
+.narrow #shop{padding:1em;gap:.5em}
+.narrow .skin-grid{gap:.5em}
+.narrow .skin-preview{height:6.5em}
+
 /* Touch pad */
 #pad{display:none;gap:14px;width:100%;max-width:520px;flex:none}
 .touch #pad{display:flex}
+.shopping #pad{visibility:hidden}
 #pad button{flex:1;min-height:92px;background:var(--panel);border:2px solid var(--line);box-shadow:4px 4px 0 #000;touch-action:none;
   font-family:var(--font-display);font-size:30px;letter-spacing:.1em;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
 #pad button small{font-family:var(--font-body);font-size:12px;letter-spacing:0;color:var(--dim)}
@@ -139,7 +164,7 @@ button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
     <div id="toast"><canvas class="face" width="30" height="30"></canvas><p></p></div>
     <div id="dlg" hidden>
       <canvas class="face" width="30" height="30"></canvas>
-      <div class="body"><b>震哥</b><p id="dlg-t"></p><span id="dlg-hint"></span></div>
+      <div class="body"><b>张震</b><p id="dlg-t"></p><span id="dlg-hint"></span></div>
       <button id="dlg-skip" type="button">跳过 »</button>
     </div>
 
@@ -147,12 +172,44 @@ button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
       <p class="eyebrow">PHYSICS LAB · B3 → F1</p>
       <h1>震哥快跑</h1>
       <p class="sub">逃离物理实验室</p>
+      <p class="wallet">能量子 ◆<b class="wallet-balance">0</b><span id="current-skin">皮肤：张震</span></p>
       <div class="btns">
         <button id="b-start" class="btn primary" type="button">▶ 开始逃亡</button>
         <button id="b-endless" class="btn" type="button">∞ 无尽模式</button>
       </div>
       <p class="keys" id="keys"></p>
-      <div class="btns"><button id="b-teach" class="btn quiet" type="button"></button></div>
+      <div class="btns">
+        <button id="b-shop" class="btn quiet" type="button">◆ 皮肤商店</button>
+        <button id="b-teach" class="btn quiet" type="button"></button>
+      </div>
+    </section>
+
+    <section id="shop" class="scr full" aria-labelledby="shop-heading" hidden>
+      <div class="shop-head"><h2 id="shop-heading">皮肤商店</h2><button id="b-shop-close" class="btn quiet" type="button">返回标题</button></div>
+      <div class="shop-info">
+        <p class="wallet">可用能量子 ◆<b class="wallet-balance">0</b></p>
+        <p class="wallet lifetime">累计收集 ◆<b id="lifetime-energy">0</b></p>
+      </div>
+      <div class="skin-grid">
+        <article class="skin-card" data-skin="zhangzhen">
+          <canvas class="skin-preview" width="128" height="107" role="img" aria-label="张震皮肤预览"></canvas>
+          <h3>张震</h3><p class="skin-price">初始皮肤 · 免费</p>
+          <button class="btn skin-action" type="button" aria-label="张震：使用中">使用中</button>
+        </article>
+        <article class="skin-card" data-skin="dingjia">
+          <canvas class="skin-preview" width="128" height="107" role="img" aria-label="丁甲皮肤预览"></canvas>
+          <h3>丁甲</h3><p class="skin-price">◆500 能量子</p>
+          <button class="btn skin-action" type="button" aria-label="丁甲：购买并使用">购买并使用</button>
+        </article>
+        <article class="skin-card" data-skin="woshen">
+          <canvas class="skin-preview" width="128" height="107" role="img" aria-label="沃神皮肤预览"></canvas>
+          <h3>沃神</h3><p class="skin-price">◆500 能量子</p>
+          <button class="btn skin-action" type="button" aria-label="沃神：购买并使用">购买并使用</button>
+        </article>
+      </div>
+      <p id="shop-status" class="shop-note" role="status" aria-live="polite"></p>
+      <p class="shop-note">能量子获取后立即入账，失败或重试也保留。</p>
+      <p id="save-note" class="shop-note">进度自动保存在当前浏览器，清除网站数据会重置。</p>
     </section>
 
     <section id="pause" class="scr full" hidden>
@@ -195,13 +252,67 @@ let W=640, PX=96, cssScale=1, dpr=1, emPx=10;
 const app=$('#app'), stage=$('#stage'), cv=$('#game'), g=cv.getContext('2d'), fxc=$('#fx'), f=fxc.getContext('2d');
 const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let touch=matchMedia('(pointer: coarse)').matches;
-const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
 
 /* ---------- sprite atlas ---------- */
-const ATLAS=new Image();
+const SKINS=[
+  {id:'zhangzhen',name:'张震',price:0,atlas:new Image(),src:'data:image/png;base64,__ATLAS__'},
+  {id:'dingjia',name:'丁甲',price:500,atlas:new Image(),src:'data:image/png;base64,__DINGJIA_ATLAS__'},
+  {id:'woshen',name:'沃神',price:500,atlas:new Image(),src:'data:image/png;base64,__WOSHEN_ATLAS__'},
+];
+const PROGRESS_KEY='zg_progress';
+function readProgress(){
+  const raw=store.get(PROGRESS_KEY,null),p=raw&&typeof raw==='object'?raw:{};
+  const valid=n=>Number.isSafeInteger(n)&&n>=0;
+  const balance=valid(p.balance)?p.balance:0,total=valid(p.total)?Math.max(p.total,balance):balance;
+  const owned=SKINS.filter(s=>!s.price||(Array.isArray(p.owned)&&p.owned.includes(s.id))).map(s=>s.id);
+  return{version:1,balance,total,owned,selected:owned.includes(p.selected)?p.selected:'zhangzhen'};
+}
+let progress=readProgress(),storageOK=true;
+let ATLAS=SKINS.find(s=>s.id===progress.selected).atlas;
 const CW=128,CH=107,COLS=8,AX=53;
 const JB=[98,98,86,68,61,76,98,98], TB=[75,74,73,74,75,74], IDLE_D=[.19,.2,.2,.1,.18,.2];
-function frame(ctx,i,x,y){ctx.drawImage(ATLAS,(i%COLS)*CW,(i/COLS|0)*CH,CW,CH,x,y,CW,CH)}
+function frame(ctx,i,x,y,atlas=ATLAS){ctx.drawImage(atlas,(i%COLS)*CW,(i/COLS|0)*CH,CW,CH,x,y,CW,CH)}
+
+/* ---------- saved energy + skins ---------- */
+function renderWallet(){
+  for(const el of document.querySelectorAll('.wallet-balance'))el.textContent=progress.balance;
+  $('#lifetime-energy').textContent=progress.total;
+  $('#current-skin').textContent='皮肤：'+SKINS.find(s=>s.id===progress.selected).name;
+  $('#save-note').textContent=storageOK?'进度自动保存在当前浏览器，清除网站数据会重置。':'浏览器未允许保存，当前进度仅在本次打开期间有效。';
+}
+function useSkin(){ATLAS=SKINS.find(s=>s.id===progress.selected).atlas}
+function saveProgress(){storageOK=store.set(PROGRESS_KEY,progress);useSkin();renderWallet()}
+function refreshProgress(){if(storageOK){progress=readProgress();useSkin()}}
+function addEnergy(n){
+  S.energy+=n;refreshProgress();
+  progress.balance=Math.min(Number.MAX_SAFE_INTEGER,progress.balance+n);
+  progress.total=Math.min(Number.MAX_SAFE_INTEGER,progress.total+n);saveProgress();
+}
+function renderShop(){
+  renderWallet();
+  for(const card of document.querySelectorAll('.skin-card')){
+    const skin=SKINS.find(s=>s.id===card.dataset.skin),owned=progress.owned.includes(skin.id),equipped=progress.selected===skin.id;
+    const btn=card.querySelector('.skin-action'),short=!owned&&progress.balance<skin.price;
+    card.classList.toggle('equipped',equipped);
+    btn.textContent=equipped?'使用中':owned?'使用皮肤':short?'还差 '+(skin.price-progress.balance):'购买并使用';
+    btn.disabled=equipped||short;btn.classList.toggle('primary',!owned&&!short);
+    btn.setAttribute('aria-label',skin.name+'：'+btn.textContent);
+    const ctx=card.querySelector('canvas').getContext('2d');ctx.clearRect(0,0,CW,CH);ctx.imageSmoothingEnabled=false;frame(ctx,0,0,0,skin.atlas);
+  }
+}
+function chooseSkin(id){
+  refreshProgress();const skin=SKINS.find(s=>s.id===id);if(!skin)return;
+  const owned=progress.owned.includes(id);
+  if(!owned&&progress.balance<skin.price){$('#shop-status').textContent='能量子不足，再去收集一些吧。';renderShop();return}
+  if(progress.selected===id){renderShop();return}
+  if(!owned){progress.balance-=skin.price;progress.owned.push(id)}
+  progress.selected=id;saveProgress();renderShop();
+  $('#shop-status').textContent=(owned?'已切换为「':'已购买并使用「')+skin.name+'」'+(storageOK?'。':'，本次进度无法保存。');
+}
+function openShop(){refreshProgress();renderShop();$('#title').hidden=true;$('#shop').hidden=false;document.body.classList.add('shopping');$('#shop-status').textContent='';$('#b-shop-close').focus()}
+function closeShop(){$('#shop').hidden=true;$('#title').hidden=false;document.body.classList.remove('shopping');titleText();$('#b-shop').focus()}
+addEventListener('storage',e=>{if(e.key===PROGRESS_KEY||e.key===null){progress=readProgress();useSkin();renderWallet();if(!$('#shop').hidden)renderShop()}});
 
 /* ---------- pixel helpers ---------- */
 const rnd=Math.random, rr=Math.round;
@@ -543,7 +654,7 @@ function launch(e,ty){
   const up=-Math.sin(e.om*S.vt+e.ph);const bonus=up>.5;
   P.y=ty;P.vy=-(VPAD+(up>0?110*up:0));P.ground=false;P.slide=false;P.jumps=1;P.djT=0;P.coyote=0;P.buf=0;e.kt=0;
   sfx.boing();burst(P.x,ty,10,'#45f0df',140);S.oscSeen.pad++;
-  if(bonus){S.energy+=5;S.perfect++;floatT(e.x+20,ty-40,'同相起跳！+5','#45f0df')}
+  if(bonus){addEnergy(5);S.perfect++;floatT(e.x+20,ty-40,'同相起跳！+5','#45f0df')}
   tip('padgo')}
 function pitFall(){
   S.hp--;S.hits++;sfx.hit();S.shake=.3;S.flash=.3;
@@ -551,7 +662,7 @@ function pitFall(){
   let gx=null;for(const s of world.grounds)if(s.x0>P.x-10){gx=s;break}
   P.x=(gx?gx.x0:P.x)+26;P.y=GY-120;P.vy=0;P.inPit=false;P.ground=false;P.jumps=1;P.inv=2.2;P.slide=false;tip('fall')}
 const SMASH={laser:1,arc:1,tesla:1,wall:1,hang:1,drone:1};
-function smash(e){e.dead=true;S.energy+=2;S.smashed++;S.shake=Math.max(S.shake,.12);sfx.smash();const b=bounds(e);
+function smash(e){e.dead=true;addEnergy(2);S.smashed++;S.shake=Math.max(S.shake,.12);sfx.smash();const b=bounds(e);
   if(b)for(let i=0;i<5;i++)burst(b.x+b.w/2,b.y+b.h*(.15+i*.17),5,i%2?'#ffe08a':'#fff',200)}
 function updateWorld(dt){
   const cx=P.x,cy=P.y-(P.slide?12:30);
@@ -564,7 +675,7 @@ function updateWorld(dt){
     if(e.type==='hang'&&!e.cnt&&e.x+34<P.x){e.cnt=1;S.oscSeen.hang++;if(S.taught.hang)tip('hangok')}
     if(e.type==='portal'&&!e.used&&hitAB(pbox(),[e.x-9,e.y-27,18,54])){e.used=true;burst(P.x,P.y-30,16,'#b48cff',170);
       P.x=e.tx+4;P.y=e.ty+28;P.vy=-120;P.ground=false;P.slide=false;P.jumps=1;P.djT=0;P.coyote=0;P.inv=Math.max(P.inv,.8);
-      S.energy+=10;S.warp=.3;sfx.warp();burst(P.x,P.y-30,16,'#45f0df',170);floatT(P.x+30,P.y-76,'量子隧穿！+10','#c9b0ff')}
+      addEnergy(10);S.warp=.3;sfx.warp();burst(P.x,P.y-30,16,'#45f0df',170);floatT(P.x+30,P.y-76,'量子隧穿！+10','#c9b0ff')}
     if(e.type==='beam'){
       if(e.t<0){if(P.x>=e.x){e.t=0;sfx.beep();if(S.teach&&!S.taught.beam){S.taught.beam=1;store.set('zg_taught',S.taught);
         say(['麦克斯韦妖要放清除射线了！盯住红色预警线。','红线在上面，就{S}滑过去；红线贴着地，就{J}跳起来。'])}}}
@@ -579,7 +690,7 @@ function updateWorld(dt){
     let dx=cx-p.x,dy=cy-p.y;const d2=dx*dx+dy*dy;
     if(P.magnet>0&&p.k==='q'&&d2<150*150){const d=Math.sqrt(d2)||1;p.x+=dx/d*520*dt;p.y+=dy/d*520*dt;dx=cx-p.x;dy=cy-p.y}
     if(Math.abs(dx)<17&&Math.abs(dy)<(p.k==='q'?30:34)){p.got=true;
-      if(p.k==='q'){S.energy++;sfx.pick();burst(p.x,p.y,4,'#ffc857',70)}
+      if(p.k==='q'){addEnergy(1);sfx.pick();burst(p.x,p.y,4,'#ffc857',70)}
       else{sfx.power();burst(p.x,p.y,12,'#fff',130);
         if(p.k==='shield'){P.shield=true;floatT(p.x,p.y-20,'法拉第笼','#45f0df');tip('shield')}
         if(p.k==='magnet'){P.magnet=9;floatT(p.x,p.y-20,'电磁铁','#ff8fa3');tip('magnet')}
@@ -616,20 +727,21 @@ function gameOver(){
 }
 function win(){S.mode='win';S.winT=0;sfx.win();if(!reduceMotion){$('#flash').style.opacity=.85;setTimeout(()=>$('#flash').style.opacity=0,450)}}
 function statsHTML(){const d=Math.floor((S.distBase+P.x)/40),t=Math.floor(S.time);
-  const rows=[['距离',d+'M'],['能量子','◆'+S.energy],['失误',S.hits+''],['用时',(t/60|0)+':'+String(t%60).padStart(2,'0')]];
+  const rows=[['距离',d+'M'],['本局能量子','◆'+S.energy],['可用余额','◆'+progress.balance],['失误',S.hits+''],['用时',(t/60|0)+':'+String(t%60).padStart(2,'0')]];
   if(S.endless)rows.push(['最佳',S.best+'M']);
   return rows.map(r=>'<div><dt>'+r[0]+'</dt><dd>'+r[1]+'</dd></div>').join('')}
-function showOver(){$('#over-q').textContent='震哥：「'+OVERQ[Math.random()*OVERQ.length|0]+'」';$('#over-s').innerHTML=statsHTML();
+function showOver(){$('#over-q').textContent='张震：「'+OVERQ[Math.random()*OVERQ.length|0]+'」';$('#over-s').innerHTML=statsHTML();
   $('#b-retry').textContent=S.endless?'再来一次':(S.cp&&S.cp.sec>0?'从 '+TH[S.cp.sec].code+' 层重来':'重新出发');$('#over').hidden=false;$('#hud').hidden=true;$('#b-retry').focus()}
 function showWin(){const rank=S.hits===0?'S':S.hits<=2?'A':S.hits<=5?'B':'C';
   $('#win-s').innerHTML=statsHTML()+'<div><dt>评级</dt><dd>'+rank+'</dd></div>';$('#win').hidden=false;$('#hud').hidden=true}
 
 /* ---------- flow ---------- */
 function titlePX(){return W<560?W*.8:W*.68}
-function hideScreens(){for(const id of['#title','#pause','#over','#win'])$(id).hidden=true}
+function hideScreens(){for(const id of['#title','#shop','#pause','#over','#win'])$(id).hidden=true;document.body.classList.remove('shopping')}
 function toTitle(){S.endless=false;S.cp=null;S.energy=0;S.hits=0;S.time=0;S.paused=false;resetWorld(0);S.mode='title';hideScreens();$('#title').hidden=false;$('#hud').hidden=true;
   D.active=false;dlg.hidden=true;S.frozen=false;toastQ.length=0;toastEl.classList.remove('on');titleText()}
 function titleText(){$('#b-teach').textContent='教学提示：'+(S.teach?'开':'关');
+  renderWallet();
   $('#keys').innerHTML=touch?'右手「跳」，左手「滑」。空中再点一次是二段跳。':'<kbd>SPACE</kbd> / <kbd>↑</kbd> 跳跃，空中再按一次二段跳　<kbd>↓</kbd> 滑铲　<kbd>P</kbd> 暂停';
   $('#b-endless').textContent=S.best?'∞ 无尽模式 · 最佳 '+S.best+'M':'∞ 无尽模式'}
 function startGame(endless,fromCp){
@@ -658,6 +770,7 @@ addEventListener('keydown',e=>{
   const onBtn=e.target instanceof HTMLButtonElement&&S.mode!=='run'&&!D.active;
   if(['Space','ArrowUp','ArrowDown'].includes(k)&&!onBtn)e.preventDefault();
   if(e.repeat)return;
+  if(!$('#shop').hidden){if(k==='Escape')closeShop();return}
   if(k==='KeyP'||k==='Escape'){setPause(!S.paused);return}
   if(k==='KeyM'){setMute(!muted);return}
   if(onBtn&&(k==='Space'||k==='Enter'))return;
@@ -668,7 +781,7 @@ addEventListener('keydown',e=>{
 });
 addEventListener('keyup',e=>{if(e.code==='ArrowDown'||e.code==='KeyS')release('slide')});
 stage.addEventListener('pointerdown',e=>{
-  if(e.target.closest('button'))return;
+  if(e.target.closest('button')||!$('#shop').hidden)return;
   if(e.pointerType==='touch'&&!touch){touch=true;document.body.classList.add('touch');layout();titleText()}
   let kind='jump';
   if(e.pointerType==='mouse'){if(e.button===2)kind='slide'}
@@ -682,6 +795,8 @@ for(const[id,kind]of[['#p-jump','jump'],['#p-slide','slide']]){const b=$(id);
   const up=()=>{b.classList.remove('down');release(kind)};b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up);b.addEventListener('pointerleave',up);
   b.addEventListener('contextmenu',e=>e.preventDefault())}
 $('#b-start').onclick=()=>startGame(false,false);
+$('#b-shop').onclick=openShop;$('#b-shop-close').onclick=closeShop;
+for(const card of document.querySelectorAll('.skin-card'))card.querySelector('.skin-action').onclick=()=>chooseSkin(card.dataset.skin);
 $('#b-endless').onclick=()=>startGame(true,false);
 $('#b-win-endless').onclick=()=>startGame(true,false);
 $('#b-again').onclick=()=>startGame(false,false);
@@ -929,13 +1044,14 @@ function loop(ts){
 function musicTickSafe(){try{musicTick()}catch(e){}}
 function boot(){
   for(let i=0;i<5;i++)buildTheme(i);
-  setMute(muted);layout();toTitle();S.pxCur=titlePX();
+  saveProgress();setMute(muted);layout();toTitle();S.pxCur=titlePX();
   addEventListener('resize',layout);if(window.ResizeObserver)new ResizeObserver(layout).observe(app);
   if(document.fonts&&document.fonts.ready)document.fonts.ready.then(layout);
   requestAnimationFrame(loop);
 }
-window.__zg={S,P,world,press,release,D,startGame,gen,C,gap,pick,hazards,pbox,hangY,laserOn,ATLAS};
-ATLAS.onload=()=>{const start=()=>boot();if(window.claude&&window.claude.hot&&window.claude.hot.ready)window.claude.hot.ready(start);else start()};
-ATLAS.src='data:image/png;base64,__ATLAS__';
+window.__zg={S,P,world,press,release,D,startGame,gen,C,gap,pick,hazards,pbox,hangY,laserOn,get ATLAS(){return ATLAS}};
+Promise.all(SKINS.map(skin=>new Promise((resolve,reject)=>{
+  skin.atlas.onload=resolve;skin.atlas.onerror=reject;skin.atlas.src=skin.src;
+}))).then(()=>{const start=()=>boot();if(window.claude&&window.claude.hot&&window.claude.hot.ready)window.claude.hot.ready(start);else start()});
 })();
 </script>
