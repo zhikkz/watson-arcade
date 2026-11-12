@@ -58,7 +58,12 @@ try {
           w.fx.ring(p.x + 90, p.cy, '#bfe9ff', 4, 80, 0.4);
         }
       };
-      for (let i = 0; i < 60; i++) { tick(i); game.draw(); }
+      // Warm up at presentation cadence too: a tight draw loop queues a large
+      // raster backlog and would count its drain as artificial measured stalls.
+      for (let i = 0; i < 60; i++) {
+        await new Promise(window.__perfRAF);
+        tick(i); game.draw();
+      }
       const times = { update: [], draw: [], frameInterval: [] };
       let last;
       for (let i = 0; i < frames; i++) {

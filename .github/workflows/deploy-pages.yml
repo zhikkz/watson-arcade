@@ -64,13 +64,15 @@ jobs:
           (cd "$baseline_dir/games/collapse-lab" && node tools/build.mjs)
           cp "$baseline_dir/games/collapse-lab/dist/index.html" test-results/collapse-lab-before.html
       - name: Measure mobile frame times with 4x CPU throttling
+        env:
+          PERF_FRAMES: '360'
         run: |
           export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path); p.stop()')"
           if [ -f test-results/collapse-lab-before.html ]; then
             node games/collapse-lab/tools/test/perf.mjs test-results/collapse-lab-before.html > test-results/collapse-lab/perf-before.json
           fi
           node games/collapse-lab/tools/test/perf.mjs > test-results/collapse-lab/perf-after.json
-          node games/collapse-lab/tools/test/perf-report.mjs test-results/collapse-lab >> "$GITHUB_STEP_SUMMARY"
+          node games/collapse-lab/tools/test/perf-report.mjs test-results/collapse-lab | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Keep mobile screenshots and performance measurements
         if: always()
         uses: actions/upload-artifact@v4
