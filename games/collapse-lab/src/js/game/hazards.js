@@ -5,6 +5,7 @@ import { rnd, segRect, rectsOverlap, clamp } from '../core/util.js';
 import { drawSprite, hasSprite } from '../core/assets.js';
 import { pxLine, pxDisc, boltPoints } from './fx.js';
 import { G } from './state.js';
+import { inView } from '../core/viewport.js';
 
 class Hazard {
   constructor(s, world) {
@@ -21,6 +22,7 @@ class Hazard {
     return p.hurt(this.dmg(dmg), Object.assign({ x: x + w / 2 }, o));
   }
   update(dt) { this.t += dt; }
+  visible(cx, cy) { return inView(this.x, this.y - 40, this.x, this.y + 8, cx, cy, 16); }
   draw() {}
 }
 
@@ -37,6 +39,7 @@ class Mover extends Hazard {
     const nx = this.x0 + Math.sin(this.t * 0.9 + this.ph) * this.range;
     this.dx = nx - this.x; this.x = nx;
   }
+  visible(cx, cy) { return inView(this.x, this.y, this.x + this.w, this.y + 8, cx, cy, 4); }
   draw(ctx, cx, cy) {
     const x = Math.round(this.x - cx), y = Math.round(this.y - cy);
     if (hasSprite('obj/mover')) { drawSprite(ctx, 'obj/mover', x, y); return; }
@@ -76,6 +79,7 @@ class Pendulum extends Hazard {
     if (hasSprite('obj/bob')) drawSprite(ctx, 'obj/bob', this.bx - cx, this.by - cy);
     else { pxDisc(ctx, this.bx - cx, this.by - cy, 9, '#14101a'); pxDisc(ctx, this.bx - cx, this.by - cy, 8, '#c89a3a'); pxDisc(ctx, this.bx - cx - 2, this.by - cy - 3, 3, '#ffe2a0'); }
   }
+  visible(cx, cy) { return inView(this.x, this.y, this.bx, this.by, cx, cy, 12); }
 }
 
 class Crusher extends Hazard {
@@ -118,6 +122,7 @@ class Crusher extends Hazard {
     ctx.fillStyle = '#c8c0cc'; ctx.fillRect(x - 14, y + 1, 28, 2);
     ctx.fillStyle = '#e0b040'; for (let i = -12; i < 12; i += 6) ctx.fillRect(x + i, y + 17, 3, 4);
   }
+  visible(cx, cy) { return inView(this.x, this.top, this.x, this.cy + this.h, cx, cy, 18); }
 }
 
 class Piston extends Hazard {
@@ -175,6 +180,7 @@ class Arc extends Hazard {
     }
   }
   addLights(L, cx, cy) { if (this.on) { L.add(this.x - cx, (this.y0 + this.y1) / 2 - cy, 70, '#bfe9ff', 0.8); } }
+  visible(cx, cy) { return inView(this.x, this.y0, this.x, this.y1, cx, cy, 12); }
   draw(ctx, cx, cy) {
     const x = Math.round(this.x - cx);
     // 上下电极
@@ -210,6 +216,7 @@ class Laser extends Hazard {
     if (Math.random() < 0.3) this.world.fx.sparks(this.ex, this.ey, this.color, 1);
   }
   addLights(L, cx, cy) { L.add(this.ex - cx, this.ey - cy, 34, this.color, 0.8); L.add((this.x + this.ex) / 2 - cx, (this.y + this.ey) / 2 - cy, 50, this.color, 0.5); }
+  visible(cx, cy) { return inView(this.x, this.y, this.ex, this.ey, cx, cy, 10); }
   draw(ctx, cx, cy) {
     const x = Math.round(this.x - cx), y = Math.round(this.y - cy);
     pxLine(ctx, x, y + 6, this.ex - cx, this.ey - cy, this.color, 3);
@@ -286,6 +293,7 @@ class Icicle extends Hazard {
       ctx.fillStyle = '#5aa0d0'; ctx.fillRect(x + (wd >> 1) - 1, y + i, 1, 1);
     }
   }
+  visible(cx, cy) { return inView(this.x, this.iy, this.x, this.iy + 18, cx, cy, 12); }
 }
 
 // ---------------------------------------------------------------- 量子：粒子束
@@ -321,6 +329,10 @@ class Beam extends Hazard {
     if (!this.on) return;
     if (this.horizontal) for (let x = this.x0; x < this.x1; x += 60) L.add(x - cx, this.by - cy, 50, '#7dffd8', 0.8);
     else L.add(this.x - cx, (this.y0 + this.y1) / 2 - cy, 80, '#7dffd8', 0.8);
+  }
+  visible(cx, cy) {
+    return this.horizontal ? inView(this.x0, this.by, this.x1, this.by, cx, cy, 10)
+      : inView(this.x, this.y0, this.x, this.y1, cx, cy, 10);
   }
   draw(ctx, cx, cy) {
     const col = '#7dffd8';

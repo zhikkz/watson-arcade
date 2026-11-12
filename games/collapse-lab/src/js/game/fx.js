@@ -2,9 +2,12 @@
 import { rnd, TAU, clamp } from '../core/util.js';
 import { drawText } from '../core/font.js';
 import { drawSil, drawSprite } from '../core/assets.js';
+import { VIEW } from '../core/config.js';
+import { inView } from '../core/viewport.js';
 
 export function pxLine(ctx, x0, y0, x1, y1, color, thick = 1) {
   x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  if (!inView(x0, y0, x1, y1, 0, 0, thick)) return;
   const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
   const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
   let err = dx + dy;
@@ -72,7 +75,9 @@ export class FX {
 
   /** 通用粒子爆发 */
   burst(x, y, n, o = {}) {
-    if (this.parts.length > 900) n = Math.ceil(n / 3);
+    // Cosmetic particles have no collision/damage role. Bound their work during
+    // chain reactions instead of letting a sustained fight grow the array.
+    n = Math.min(n, Math.max(0, (VIEW.touch ? 256 : 768) - this.parts.length));
     const sp0 = o.speed === undefined ? 40 : o.speed, sp1 = o.speedMax === undefined ? sp0 * 2.2 : o.speedMax;
     const a0 = o.angle === undefined ? 0 : o.angle, spread = o.spread === undefined ? TAU : o.spread;
     for (let i = 0; i < n; i++) {
@@ -174,6 +179,7 @@ export class FX {
   draw(ctx, cx, cy) {
     // 光束
     for (const b of this.beams) {
+      if (!inView(b.x1, b.y1, b.x2, b.y2, cx, cy, b.width + 2)) continue;
       const k = b.life / b.max;
       const w = Math.max(1, Math.round(b.width * k));
       ctx.globalAlpha = 0.35 + 0.65 * k;
@@ -185,6 +191,7 @@ export class FX {
     for (const s of this.slashes) {
       const k = 1 - s.life / s.max;            // 0 -> 1
       const fx = s.follow ? s.follow.x + s.ox : s.x, fy = s.follow ? s.follow.y + s.oy : s.y;
+      if (!inView(fx, fy, fx, fy, cx, cy, s.r + s.width)) continue;
       const head = Math.min(1, k * 1.9);       // 弧光头部推进
       const tail = Math.max(0, k * 1.9 - 0.75);
       const steps = Math.max(8, Math.round(Math.abs(s.a1 - s.a0) * s.r / 2.2));
@@ -208,6 +215,7 @@ export class FX {
     }
     // 粒子
     for (const p of this.parts) {
+      if (!inView(p.x, p.y, p.x, p.y, cx, cy, p.size + 6)) continue;
       const k = p.life / p.max;
       if (p.fade) ctx.globalAlpha = k < 0.5 ? k * 2 : 1;
       ctx.fillStyle = p.color;
@@ -222,6 +230,7 @@ export class FX {
     ctx.globalAlpha = 1;
     // 冲击环
     for (const r of this.rings) {
+      if (!inView(r.x, r.y, r.x, r.y, cx, cy, Math.max(r.r0, r.r1) + r.thick)) continue;
       const k = 1 - r.life / r.max;
       const e = 1 - (1 - k) * (1 - k);
       ctx.globalAlpha = Math.min(1, (1 - k) * 2);
@@ -243,6 +252,7 @@ export class FX {
 
   drawTexts(ctx, cx, cy) {
     for (const t of this.texts) {
+      if (!inView(t.x, t.y, t.x, t.y, cx, cy, t.str.length * t.size + 2)) continue;
       const k = t.life / t.max;
       const pop = t.big ? (k > 0.85 ? 1 : 0) : 0;
       drawText(ctx, t.str, t.x - cx, t.y - cy - pop, { size: t.size, color: t.color, align: 'center', outline: '#14101a', alpha: k < 0.3 ? k / 0.3 : 1 });
@@ -250,8 +260,16 @@ export class FX {
   }
 
   /** 给光照层用：发光粒子的位置 */
-  forEachLight(fn) {
-    for (const p of this.parts) if (p.light) fn(p.x, p.y, 10 + p.light * 6, p.color, Math.min(1, p.life / p.max * 1.5) * 0.5);
+  forEachLight(fn, cx = 0, cy = 0) {
+    // Keep recent, visible particle glows; beam/bolt/impact lights remain separate
+    // so decorative sparks cannot consume the lighting work for an attack.
+    let budget = VIEW.touch ? 20 : 64;
+    for (let i = this.parts.length - 1; i >= 0 && budget > 0; i--) {
+      const p = this.parts[i], r = 10 + p.light * 6;
+      if (!p.light || !inView(p.x, p.y, p.x, p.y, cx, cy, r)) continue;
+      fn(p.x, p.y, r, p.color, Math.min(1, p.life / p.max * 1.5) * 0.5);
+      budget--;
+    }
     for (const b of this.bolts) {
       const m = b.pts[(b.pts.length / 2) | 0];
       fn(m[0], m[1], 60, b.color, 0.8);

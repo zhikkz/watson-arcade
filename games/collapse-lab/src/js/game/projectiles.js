@@ -3,6 +3,7 @@ import { TILE } from '../core/config.js';
 import { TAU, rnd } from '../core/util.js';
 import { drawSprite, drawSpriteRot, hasSprite } from '../core/assets.js';
 import { pxLine, pxDisc, pxCircle } from './fx.js';
+import { inView } from '../core/viewport.js';
 import { G } from './state.js';
 
 export class Projectile {
@@ -140,6 +141,7 @@ export class Projectile {
   }
 
   draw(ctx, cx, cy) {
+    if (!inView(this.x, this.y, this.x, this.y, cx, cy, this.r + 24)) return;
     const x = Math.round(this.x - cx), y = Math.round(this.y - cy);
     const c = this.color;
     switch (this.look) {
