@@ -1,4 +1,4 @@
-@font-face{font-family:ArcadePixel;src:url('./arcade-pixel.woff') format('woff');font-display:swap;font-weight:400}
+@font-face{font-family:ArcadePixel;src:url('./arcade-pixel.woff2') format('woff2');font-display:swap;font-weight:400}
 :root{color-scheme:dark;--bg:#090d18;--panel:#111827;--line:#293348;--ink:#edf4ff;--dim:#99a6bd;--cyan:#60e8d1;--purple:#c49aff;--amber:#ffd16b;--pixel:ArcadePixel,monospace;--body:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding:20px}
@@ -39,7 +39,7 @@ h1>span{color:var(--cyan);text-shadow:3px 3px 0 #1a514b}
 .game-card{--accent:var(--cyan);display:block;text-decoration:none;background:var(--panel);border:1px solid #354354;position:relative;transition:transform .18s,border-color .18s,box-shadow .18s;outline-offset:5px}
 .game-card::before,.game-card::after{content:"";position:absolute;width:9px;height:9px;border-color:var(--accent);border-style:solid;z-index:2;pointer-events:none}
 .game-card::before{top:-1px;left:-1px;border-width:2px 0 0 2px}.game-card::after{bottom:-1px;right:-1px;border-width:0 2px 2px 0}
-.game-card.collapse{--accent:var(--purple)}
+
 .game-card:hover,.game-card:focus-visible{border-color:var(--accent);transform:translateY(-4px);box-shadow:0 6px 0 #0004,0 0 28px #60e8d10a}
 .game-card:focus-visible{outline:2px solid var(--accent)}
 .game-image{position:relative;aspect-ratio:760/360;overflow:hidden;background:#141b2b;border-bottom:1px solid #354354}

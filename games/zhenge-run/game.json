@@ -1,0 +1,15 @@
+{
+  "title": "震哥快跑",
+  "order": 10,
+  "category": "RUN & ESCAPE",
+  "genre": "像素跑酷",
+  "description": ["跳跃、滑铲、二段跳。", "甩开身后的光幕，一路逃出物理实验室。"],
+  "detail": "闯关 / 无尽模式",
+  "accent": "#60e8d1",
+  "cover": "cover.webp",
+  "coverAlt": "张震在像素实验室中跳过机关，收集发光的能量子",
+  "sceneLabel": "PHYSICS LAB · B3 → F1",
+  "build": ["python3", "tools/build.py"],
+  "output": "dist",
+  "publish": ["index.html"]
+}

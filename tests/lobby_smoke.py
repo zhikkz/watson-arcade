@@ -9,7 +9,7 @@ import unittest
 
 from playwright.sync_api import sync_playwright
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1] / 'dist'
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
@@ -50,7 +50,13 @@ class LobbyTests(unittest.TestCase):
     def test_lobby_assets_and_responsive_cards(self):
         self.page.goto(self.url)
         self.page.evaluate('document.fonts.ready')
-        self.assertEqual(self.page.locator('.game-card').count(), 2)
+        self.assertGreaterEqual(self.page.locator('.game-card').count(), 2)
+        self.assertEqual(self.page.locator('a[href="./zhenge-run/"]').count(), 1)
+        self.assertEqual(self.page.locator('a[href="./collapse-lab/"]').count(), 1)
+        for image in self.page.locator('.game-image img').all():
+            image.scroll_into_view_if_needed()
+            image.wait_for(state='visible')
+            image.evaluate('el=>el.complete || new Promise(resolve=>el.addEventListener("load",resolve,{once:true}))')
         self.assertTrue(self.page.locator('.game-image img').evaluate_all('els=>els.every(e=>e.complete && e.naturalWidth>0)'))
         self.assertTrue(self.page.evaluate('document.fonts.check("12px ArcadePixel")'))
         for width, height in [(1440, 900), (1024, 768), (844, 390), (760, 900), (390, 844), (320, 568)]:
@@ -70,12 +76,17 @@ class LobbyTests(unittest.TestCase):
         self.assertEqual(self.page.locator(':focus').get_attribute('data-game'), '1')
         self.page.keyboard.press('ArrowRight')
         self.assertEqual(self.page.locator(':focus').get_attribute('data-game'), '2')
+        # Future games can be inserted anywhere in the display order.
+        for _ in range(self.page.locator('.game-card').count()):
+            if self.page.locator(':focus').get_attribute('href') == './collapse-lab/':
+                break
+            self.page.keyboard.press('ArrowRight')
         self.page.keyboard.press('Enter')
         self.page.wait_for_function('window.__cl')
         self.assertEqual(self.page.title(), '坍缩实验室')
         self.page.locator('#hall-link').click()
         self.page.wait_for_url(self.url)
-        self.page.locator('[data-game="1"]').click()
+        self.page.locator('a[href="./zhenge-run/"]').click()
         self.page.wait_for_function('window.__zg && __zg.P.fi !== undefined')
         self.assertEqual(self.page.title(), '震哥快跑')
         self.page.locator('#title a[href="../"]').click()
@@ -85,13 +96,13 @@ class LobbyTests(unittest.TestCase):
         self.page.goto(self.url)
         progress = {'version': 1, 'balance': 123, 'total': 623, 'owned': ['zhangzhen', 'dingjia'], 'selected': 'dingjia'}
         self.page.evaluate('p=>{localStorage.setItem("zg_progress",JSON.stringify(p));localStorage.setItem("zg_best","678")}', progress)
-        self.page.locator('[data-game="1"]').click()
+        self.page.locator('a[href="./zhenge-run/"]').click()
         self.page.wait_for_function('window.__zg && __zg.P.fi !== undefined')
         self.assertIn('丁甲', self.page.locator('#current-skin').inner_text())
         self.assertEqual(self.page.locator('#title .wallet-balance').inner_text(), '123')
         self.assertIn('678M', self.page.locator('#b-endless').inner_text())
         self.page.locator('#title a[href="../"]').click()
-        self.page.locator('[data-game="2"]').click()
+        self.page.locator('a[href="./collapse-lab/"]').click()
         self.page.wait_for_function('window.__cl')
         self.page.evaluate('__cl.G.save.introSeen = true')
         self.page.wait_for_function('__cl.game.ui.active.t > 0.3')
@@ -108,7 +119,7 @@ class LobbyTests(unittest.TestCase):
         self.page.reload()
         self.assertEqual(self.page.evaluate('JSON.parse(localStorage.getItem("zg_progress"))'), progress)
         self.assertEqual(self.page.evaluate('localStorage.getItem("collapse-lab-run-v1")'), saved_run)
-        self.page.locator('[data-game="2"]').click()
+        self.page.locator('a[href="./collapse-lab/"]').click()
         self.page.wait_for_function('window.__cl && __cl.game.runSave')
         self.assertEqual(self.page.evaluate('__cl.game.runSave.run.stage'), 0)
 
@@ -118,11 +129,11 @@ class LobbyTests(unittest.TestCase):
         self.page = self.context.new_page()
         self.page.on('pageerror', lambda e: self.errors.append(str(e)))
         self.page.goto(self.url)
-        self.page.locator('[data-game="2"]').tap()
+        self.page.locator('a[href="./collapse-lab/"]').tap()
         self.page.wait_for_function('window.__cl && __cl.VIEW.rot')
         self.page.locator('#hall-link').tap()
         self.page.wait_for_url(self.url)
-        self.page.locator('[data-game="1"]').tap()
+        self.page.locator('a[href="./zhenge-run/"]').tap()
         self.page.wait_for_function('window.__zg && __zg.P.fi !== undefined')
         self.page.locator('#title a[href="../"]').tap()
         self.page.wait_for_url(self.url)
@@ -131,7 +142,7 @@ class LobbyTests(unittest.TestCase):
         with self.browser.new_context(java_script_enabled=False) as context:
             page = context.new_page()
             page.goto(self.url)
-            page.locator('[data-game="2"]').click()
+            page.locator('a[href="./collapse-lab/"]').click()
             page.wait_for_url(self.url + 'collapse-lab/')
             page.wait_for_load_state('load')
             self.assertEqual(page.title(), '坍缩实验室')

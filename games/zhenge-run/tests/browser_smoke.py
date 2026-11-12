@@ -14,7 +14,7 @@ import unittest
 from playwright.sync_api import sync_playwright
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3] / 'dist'
 class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, *_args):
         pass

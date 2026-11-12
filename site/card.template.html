@@ -1,0 +1,15 @@
+          <a class="game-card" style="--accent:{{ACCENT}}" href="./{{SLUG}}/" aria-labelledby="{{SLUG}}-title" aria-describedby="{{SLUG}}-description" data-game="{{INDEX}}">
+            <div class="game-image">
+              <img src="./{{COVER}}" width="760" height="360" alt="{{COVER_ALT}}" {{IMAGE_LOADING}}>
+              <span class="cartridge"><span class="cartridge-dot" aria-hidden="true"></span> CARTRIDGE {{NUMBER}}</span>
+{{BADGE}}
+              <span class="image-caption" aria-hidden="true">{{SCENE_LABEL}}</span>
+              <span class="image-corner" aria-hidden="true">↗</span>
+            </div>
+            <div class="game-info">
+              <div class="game-category"><span>{{CATEGORY}}</span><span class="genre">{{GENRE}}</span></div>
+              <h3 id="{{SLUG}}-title">{{TITLE}}</h3>
+              <p id="{{SLUG}}-description">{{DESCRIPTION}}</p>
+              <div class="game-bottom"><span class="play-button"><span aria-hidden="true">▶</span> 进入游戏 <span class="play-arrow" aria-hidden="true">→</span></span><span class="game-detail">{{DETAIL}}</span></div>
+            </div>
+          </a>
