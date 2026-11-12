@@ -1,0 +1,94 @@
+{
+  "01_idle": {
+    "frames": 6,
+    "canvas": [
+      384,
+      320
+    ],
+    "duration_ms": [
+      190,
+      200,
+      200,
+      100,
+      180,
+      200
+    ],
+    "loop": true,
+    "background": "transparent"
+  },
+  "02_run": {
+    "frames": 6,
+    "canvas": [
+      384,
+      320
+    ],
+    "duration_ms": [
+      85,
+      85,
+      85,
+      85,
+      85,
+      85
+    ],
+    "loop": true,
+    "background": "transparent"
+  },
+  "03_jump": {
+    "frames": 8,
+    "canvas": [
+      384,
+      320
+    ],
+    "duration_ms": [
+      140,
+      100,
+      90,
+      110,
+      160,
+      110,
+      110,
+      180
+    ],
+    "loop": true,
+    "background": "transparent"
+  },
+  "04_air_tuck": {
+    "frames": 6,
+    "canvas": [
+      384,
+      320
+    ],
+    "duration_ms": [
+      110,
+      110,
+      110,
+      110,
+      110,
+      110
+    ],
+    "loop": true,
+    "background": "transparent"
+  },
+  "05_slide": {
+    "frames": 11,
+    "canvas": [
+      384,
+      320
+    ],
+    "duration_ms": [
+      160,
+      70,
+      70,
+      90,
+      140,
+      180,
+      100,
+      80,
+      80,
+      90,
+      180
+    ],
+    "loop": true,
+    "background": "transparent"
+  }
+}

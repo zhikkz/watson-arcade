@@ -1,0 +1,43 @@
+// 真实输入测试：用真正的键盘事件驱动（不走调试接口），顺带检查音频能否启动
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const { chromium } = createRequire(import.meta.url)('playwright');
+const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const errors = [];
+page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 3).join('\n')));
+page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+await page.goto('file://' + join(root, 'dist', 'index.html'));
+await page.waitForFunction(() => window.__cl, null, { timeout: 10000 });
+const wait = (ms) => page.waitForTimeout(ms);
+const st = () => page.evaluate(() => { const c = window.__cl, G = c.G, w = G.world; return { ui: c.game.ui.active ? c.game.ui.active.constructor.name : null, run: !!G.run, x: w ? Math.round(w.player.x) : null, y: w ? Math.round(w.player.y) : null, state: w ? w.player.state : null, audio: c.audio.ready, frame: G.frame }; });
+await page.evaluate(() => { window.__cl.G.save.introSeen = false; });
+console.log('title', await st());
+await page.keyboard.press('Enter'); await wait(400);
+console.log('after Enter (intro expected)', await st());
+await page.keyboard.press('KeyJ'); await wait(300);        // 跳过打字
+await page.keyboard.press('KeyJ'); await wait(1500);       // 关闭开场 -> 开始
+const a = await st(); console.log('in game', a);
+await page.keyboard.down('KeyD'); await wait(700); await page.keyboard.up('KeyD'); await wait(100);
+const b = await st(); console.log('after D 0.7s', b, 'moved', b.x - a.x);
+await page.keyboard.press('KeyK'); await wait(180);
+const c1 = await st(); console.log('after K (jump)', c1, 'rose', b.y - c1.y);
+await wait(700);
+await page.keyboard.press('KeyL'); await wait(120);
+console.log('after L (roll)', await st());
+await wait(600);
+await page.keyboard.press('KeyJ'); await wait(100);
+console.log('after J (attack)', await st());
+await wait(500);
+await page.keyboard.press('Escape'); await wait(200);
+console.log('after Esc (pause)', await st());
+await page.keyboard.press('Escape'); await wait(200);
+console.log('after Esc again', await st());
+const music = await page.evaluate(() => { const a = window.__cl.audio; return { ready: a.ready }; });
+console.log('audio', music);
+const fps = await page.evaluate(async () => { const G = window.__cl.G; const f0 = G.frame, t0 = performance.now(); await new Promise((r) => setTimeout(r, 1000)); return Math.round((G.frame - f0) / ((performance.now() - t0) / 1000)); });
+console.log('logic fps (real-time loop):', fps);
+console.log(errors.length ? errors.join('\n') : 'no errors');
+await browser.close();

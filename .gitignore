@@ -1,2 +1,5 @@
 __pycache__/
 zhenge-run.html
+node_modules/
+games/collapse-lab/dist/
+test-results/

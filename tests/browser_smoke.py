@@ -27,7 +27,7 @@ class GameTests(unittest.TestCase):
             ("127.0.0.1", 0), partial(QuietHandler, directory=str(ROOT))
         )
         Thread(target=cls.server.serve_forever, daemon=True).start()
-        cls.url = f"http://127.0.0.1:{cls.server.server_port}/"
+        cls.url = f"http://127.0.0.1:{cls.server.server_port}/zhenge-run/"
         cls.pw = sync_playwright().start()
         cls.browser = cls.pw.chromium.launch(
             executable_path=os.environ.get("CHROMIUM_PATH") or shutil.which("chromium"),
