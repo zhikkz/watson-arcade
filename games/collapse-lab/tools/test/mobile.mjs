@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const outDir = process.argv[2] || '.';
-const browser = await chromium.launch();
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
 const errors = [];
 let failed = 0;
 const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '  ok   ' : '  FAIL ') + name + (extra ? '  ' + extra : '')); };

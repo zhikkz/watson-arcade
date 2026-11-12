@@ -120,7 +120,17 @@ node tools/test/dps.mjs                  # 武器与技能的输出对比
 node tools/test/physics.mjs              # 跳跃高度、滑铲、攀沿等移动数值
 node tools/test/save.mjs [目录]           # 存档：真实关闭 / 重开浏览器，验证继续、清档、损坏存档
 node tools/test/mobile.mjs <目录>         # 手机端：真实触摸事件驱动摇杆 / 圆键 / 菜单，横屏、竖屏旋转、平板
+node tools/test/perf.mjs [index.html]     # 手机渲染基准：固定随机种子、探索/密集战斗、4 倍 CPU 降速
 ```
+
+性能基准可用 `PERF_CPU_RATE=1` 关闭 CPU 降速，或用 `PERF_FRAMES=360` 延长采样。
+系统自带 Chromium 时可设置 `CHROMIUM_PATH=/usr/bin/chromium`。
+PR 检查会用同一份测试脚本分别运行基线版本和当前版本，记录绘制耗时、P95 帧间隔、长帧数与 Canvas 调用数；结果与手机/平板截图保存在 Actions 的 `collapse-lab-mobile-tests` 产物中。
+浏览器模拟有助于前后对比，不代表具体手机的实际帧率。
+
+触屏设备保持游戏画面和界面的原始像素分辨率，仅将柔光缓冲区缩为四分之一面积；装饰粒子最多 256 个、粒子光源最多 20 个，攻击光源单独保留。
+高刷新率屏幕每秒最多重绘 60 次，物理逻辑仍为固定 60 步；隐藏页面停止更新与绘制。
+屏幕外的机关、物件、子弹和装饰特效跳过绘制，碰撞、伤害和机关计时继续按原规则更新。
 
 ## 致谢
 

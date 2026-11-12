@@ -18,6 +18,7 @@ import { BIOMES } from './biomes.js';
 import { Coin, DataOrb, Food, ItemPickup, ScrollPickup, Crate, Chest, Vending, ExitDoor, Dispenser, Blackboard, Terminal, Spring, Sign, starterChoices } from './props.js';
 import { makeHazard } from './hazards.js';
 import { drawBackdrop } from './backdrop.js';
+import { inView } from '../core/viewport.js';
 
 export class World {
   constructor(game, level, stageDef) {
@@ -28,6 +29,7 @@ export class World {
     this.player.world = this;
     this.enemies = []; this.projs = []; this.actors = []; this.pickups = []; this.props = []; this.hazards = [];
     this.fx = new FX();
+    this.visibleHazards = [];
     this.camera = new Camera(level);
     this.lighting = new Lighting();
     this.time = 0; this.hitstopT = 0; this.slowT = 0; this.slowK = 1;
@@ -367,13 +369,17 @@ export class World {
   draw(ctx) {
     const cam = this.camera, lv = this.level, p = this.player;
     const cx = cam.vx, cy = cam.vy;
+    const hazards = this.visibleHazards;
+    hazards.length = 0;
+    for (const h of this.hazards) if (h.visible(cx, cy)) hazards.push(h);
+    const visibleThing = (k) => inView(k.x - k.w / 2, k.y - k.h, k.x + k.w / 2, k.y, cx, cy, 32);
     drawBackdrop(ctx, lv.biome, cx, cy, this.time);
     lv.drawLayer(ctx, cx, cy, false);
     this.drawLiquid(ctx, cx, cy);
-    for (const h of this.hazards) if (h.drawBack) h.drawBack(ctx, cx, cy);
-    for (const k of this.props) k.draw(ctx, cx, cy);
-    for (const h of this.hazards) if (!h.emissive) h.draw(ctx, cx, cy);
-    for (const k of this.pickups) k.draw(ctx, cx, cy);
+    for (const h of hazards) if (h.drawBack) h.drawBack(ctx, cx, cy);
+    for (const k of this.props) if (visibleThing(k)) k.draw(ctx, cx, cy);
+    for (const h of hazards) if (!h.emissive) h.draw(ctx, cx, cy);
+    for (const k of this.pickups) if (visibleThing(k)) k.draw(ctx, cx, cy);
     this.fx.drawBack(ctx, cx, cy);
     for (const a of this.actors) a.draw(ctx, cx, cy);
     for (const e of this.enemies) if (e.x > cx - 80 && e.x < cx + W + 80 && e.y > cy - 60 && e.y < cy + H + 120) e.draw(ctx, cx, cy);
@@ -394,15 +400,15 @@ export class World {
     for (const k of this.pickups) if (k.light) L.add(k.x - cx, k.y - 8 - cy, k.lightR || 24, k.light, 0.6);
     for (const k of this.props) if (k.light) L.add(k.x - cx, k.y - k.h / 2 - cy, k.lightR || 30, k.light, 0.6);
     for (const h of this.hazards) if (h.addLights) h.addLights(L, cx, cy);
-    this.fx.forEachLight((x, y, r, c, a) => L.add(x - cx, y - cy, r, c, a));
+    this.fx.forEachLight((x, y, r, c, a) => L.add(x - cx, y - cy, r, c, a), cx, cy);
     L.render(ctx);
 
     // 发光体在光照之后绘制，保持明亮
     for (const l of lv.lights) drawGlow(ctx, l.x - cx, l.y - cy - 4, 20, l.color, 0.35);
-    for (const h of this.hazards) if (h.emissive) h.draw(ctx, cx, cy);
+    for (const h of hazards) if (h.emissive) h.draw(ctx, cx, cy);
     for (const pr of this.projs) pr.draw(ctx, cx, cy);
     this.fx.draw(ctx, cx, cy);
-    for (const k of this.props) if (k.drawOverlay) k.drawOverlay(ctx, cx, cy);
+    for (const k of this.props) if (k.drawOverlay && visibleThing(k)) k.drawOverlay(ctx, cx, cy);
     this.fx.drawTexts(ctx, cx, cy);
     this.drawPrompt(ctx, cx, cy);
 

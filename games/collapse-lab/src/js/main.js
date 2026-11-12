@@ -10,6 +10,7 @@ import { spawnEnemy, BESTIARY } from './game/enemy.js';
 import { makeItem, ITEMS } from './game/items.js';
 import { makeHazard } from './game/hazards.js';
 import { PERKS } from './game/perks.js';
+import { FrameClock } from './core/clock.js';
 
 const root = document.getElementById('root');
 const app = document.getElementById('app');
@@ -136,25 +137,23 @@ async function boot() {
 
   // 切到后台 / 失焦：松开所有虚拟按键，游戏中自动暂停
   const away = () => { touch.reset(); game.autoPause(); };
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { audio.suspend(); away(); } else audio.resume(); });
+  const clock = new FrameClock(performance.now());
+  document.addEventListener('visibilitychange', () => {
+    clock.reset(performance.now());
+    if (document.hidden) { audio.suspend(); away(); } else audio.resume();
+  });
   window.addEventListener('blur', () => touch.reset());
   window.addEventListener('pagehide', away);
 
-  let last = performance.now(), acc = 0;
   function frame(now) {
     requestAnimationFrame(frame);
-    let dt = (now - last) / 1000;
-    last = now;
-    if (dt > 0.1) dt = 0.1;
-    acc += dt;
-    let steps = 0;
-    while (acc >= STEP && steps < 4) {
+    const steps = clock.advance(now, document.hidden);
+    if (!steps) return;
+    for (let i = 0; i < steps; i++) {
       input.beginStep();
       game.update(STEP);
       input.endStep();
-      acc -= STEP; steps++;
     }
-    if (steps === 4) acc = 0;
     game.draw();
     hallLink.hidden = !!game.world && !game.ui.active?.hallReturn;
   }

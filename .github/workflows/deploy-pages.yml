@@ -22,6 +22,8 @@ jobs:
       pages: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -46,6 +48,38 @@ jobs:
         run: |
           python games/zhenge-run/tests/browser_smoke.py
           python tests/lobby_smoke.py
+      - name: Test Collapse Lab on phones and tablets
+        run: |
+          mkdir -p test-results/collapse-lab
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path); p.stop()')"
+          node games/collapse-lab/tools/test/mobile.mjs test-results/collapse-lab
+      - name: Build PR base for the mobile performance comparison
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          baseline_dir="$(mktemp -d)"
+          git archive "$BASE_SHA" | tar -x -C "$baseline_dir"
+          npm ci --prefix "$baseline_dir/games/collapse-lab" --no-audit --no-fund
+          (cd "$baseline_dir/games/collapse-lab" && node tools/build.mjs)
+          cp "$baseline_dir/games/collapse-lab/dist/index.html" test-results/collapse-lab-before.html
+      - name: Measure mobile frame times with 4x CPU throttling
+        env:
+          PERF_FRAMES: '360'
+        run: |
+          export CHROMIUM_PATH="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path); p.stop()')"
+          if [ -f test-results/collapse-lab-before.html ]; then
+            node games/collapse-lab/tools/test/perf.mjs test-results/collapse-lab-before.html > test-results/collapse-lab/perf-before.json
+          fi
+          node games/collapse-lab/tools/test/perf.mjs > test-results/collapse-lab/perf-after.json
+          node games/collapse-lab/tools/test/perf-report.mjs test-results/collapse-lab | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Keep mobile screenshots and performance measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collapse-lab-mobile-tests
+          path: test-results/collapse-lab
+          if-no-files-found: ignore
       - uses: actions/configure-pages@v5
         if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3

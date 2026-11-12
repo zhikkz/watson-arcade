@@ -2,11 +2,26 @@
 import { assets } from './assets.js';
 
 const segCache = new Map();   // 「字号|颜色|文本片段」 -> 画好的小画布
+const tokenCache = new Map();
+const outlineCache = new Map();
+
+function remember(cache, key, value, limit) {
+  // Evict one old entry; clearing a whole cache caused periodic rasterization spikes.
+  if (cache.size >= limit) cache.delete(cache.keys().next().value);
+  cache.set(key, value);
+  return value;
+}
+
+function cached(cache, key) {
+  const value = cache.get(key);
+  if (value) { cache.delete(key); cache.set(key, value); }
+  return value;
+}
 
 /** 把一段同色文字画成一张小画布并缓存（比整张字体图集按颜色各存一份省得多） */
 function segment(F, size, str, color) {
   const key = size + '|' + color + '|' + str;
-  let c = segCache.get(key);
+  let c = cached(segCache, key);
   if (!c) {
     let w = 0;
     for (let i = 0; i < str.length; i++) w += glyphOf(F, str[i])[2];
@@ -20,8 +35,7 @@ function segment(F, size, str, color) {
       x += gl[2];
     }
     if (color !== '#ffffff') { g.globalCompositeOperation = 'source-in'; g.fillStyle = color; g.fillRect(0, 0, c.width, c.height); }
-    if (segCache.size > 800) segCache.clear();
-    segCache.set(key, c);
+    remember(segCache, key, c, 800);
   }
   return c;
 }
@@ -33,6 +47,8 @@ const TAGS = {
 };
 
 function tokenize(text) {
+  const hit = cached(tokenCache, text);
+  if (hit) return hit;
   // -> [{ch, color|null}]，color 为 null 表示用默认色
   const out = [];
   let color = null;
@@ -49,7 +65,7 @@ function tokenize(text) {
     }
     out.push({ ch, color });
   }
-  return out;
+  return remember(tokenCache, text, out, 512);
 }
 
 function glyphOf(F, ch) {
@@ -123,6 +139,23 @@ function lineWidth(F, toks) {
   return w;
 }
 
+function drawOutline(ctx, F, toks, x, y, color) {
+  const text = toks.map((t) => t.ch).join('');
+  const key = F.h + '|' + color + '|' + text;
+  let c = cached(outlineCache, key);
+  if (!c) {
+    const mask = segment(F, F.h, text, color);
+    c = document.createElement('canvas');
+    c.width = mask.width + 2; c.height = F.h + 2;
+    const g = c.getContext('2d');
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      g.drawImage(mask, 1 + dx, 1 + dy);
+    }
+    remember(outlineCache, key, c, 512);
+  }
+  ctx.drawImage(c, x - 1, y - 1);
+}
+
 /**
  * 绘制文本。
  * opts: size(12|10|8) color align('left'|'center'|'right') shadow outline maxWidth lineGap alpha
@@ -146,9 +179,7 @@ export function drawText(ctx, text, x, y, opts = {}) {
       lx = align === 'center' ? Math.round(x - w / 2) : x - w;
     }
     if (opts.outline) {
-      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-        drawLine(ctx, F, toks, lx, cy, color, dx, dy, opts.outline);
-      }
+      drawOutline(ctx, F, toks, lx, cy, opts.outline);
     } else if (opts.shadow) {
       drawLine(ctx, F, toks, lx, cy, color, 1, 1, opts.shadow);
     }

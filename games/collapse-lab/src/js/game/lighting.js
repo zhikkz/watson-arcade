@@ -1,5 +1,5 @@
 // 光照：环境暗色 + 叠加光斑（分级的像素风光晕），用 multiply 合成到画面
-import { W, H } from '../core/config.js';
+import { W, H, VIEW } from '../core/config.js';
 
 const sprites = new Map();
 
@@ -36,8 +36,13 @@ export class Lighting {
   }
 
   begin(ambient) {
-    // 视口宽度会随屏幕比例变化
-    if (this.canvas.width !== W) this.canvas.width = W;
+    // Soft light needs fewer pixels than the sharp world/HUD. Keep those at native
+    // resolution; only the touch-device light buffer is quarter area.
+    this.scale = VIEW.touch ? 0.5 : 1;
+    const width = Math.ceil(W * this.scale), height = Math.ceil(H * this.scale);
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width; this.canvas.height = height;
+    }
     this.ambient = ambient;
     this.queue.length = 0;
   }
@@ -50,6 +55,7 @@ export class Lighting {
 
   render(ctx) {
     const g = this.ctx;
+    g.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     g.globalCompositeOperation = 'source-over';
     g.globalAlpha = 1;
     g.fillStyle = this.ambient;
@@ -63,7 +69,7 @@ export class Lighting {
     }
     g.globalAlpha = 1;
     ctx.globalCompositeOperation = 'multiply';
-    ctx.drawImage(this.canvas, 0, 0);
+    ctx.drawImage(this.canvas, 0, 0, W, H);
     ctx.globalCompositeOperation = 'source-over';
   }
 }
