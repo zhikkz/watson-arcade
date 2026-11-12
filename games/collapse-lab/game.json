@@ -1,0 +1,17 @@
+{
+  "title": "坍缩实验室",
+  "order": 20,
+  "category": "FIGHT & EXPLORE",
+  "genre": "横版动作 · ROGUELITE",
+  "description": ["拿起装备，闯过四个实验区。", "每次倒下，实验室都会重新坍缩。"],
+  "detail": "随机关卡 / 装备成长",
+  "accent": "#c49aff",
+  "cover": "cover.webp",
+  "coverAlt": "坍缩实验室的横版像素场景，张震面对实验楼里的怪物与机关",
+  "sceneLabel": "COLLAPSE LAB · NIGHT 01",
+  "badge": "新游戏",
+  "install": ["npm", "ci", "--no-audit", "--no-fund"],
+  "build": ["node", "tools/build.mjs"],
+  "output": "dist",
+  "publish": ["index.html"]
+}

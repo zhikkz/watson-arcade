@@ -1,5 +1,7 @@
 __pycache__/
-zhenge-run.html
+*.py[cod]
+.venv/
 node_modules/
-games/collapse-lab/dist/
+dist/
 test-results/
+.DS_Store
