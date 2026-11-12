@@ -1,114 +1,121 @@
-// 本地存档：保存在浏览器的 localStorage 里（同一个浏览器、同一个网址下长期有效，不需要服务器）
-//   collapse-lab-save-v1   永久进度：数据、解锁、图鉴、统计、设置
-//   collapse-lab-run-v1    进行中的一局：进入当前区域时的状态（存档点），用于「继续实验」
-// 全部读写都有 try/catch：隐私模式、被禁用的站点数据或沙箱里 localStorage 可能不可用，
-// 这时退回到内存里（只在本次打开期间有效），并通过 saveStatus() 告诉界面。
+// 版本 2 把永久进度与区域存档点一次写进同一个键，避免上传数据时只成功保存一半。
+// 沿用永久存档键；第一次读取时迁移旧的独立本局存档，迁移成功后才删除旧键。
 const KEY = 'collapse-lab-save-v1';
-const RUN_KEY = 'collapse-lab-run-v1';
-
+const LEGACY_RUN_KEY = 'collapse-lab-run-v1';
+const SETTINGS = () => ({ sfx: 0.8, music: 0.55, shake: true, flash: true, touchScale: 1, stickFixed: true });
 const DEFAULTS = () => ({
-  version: 1,
-  data: 0,                 // 永久货币「数据」
-  unlocks: {},             // 永久解锁 id -> 等级/true
-  seen: {},                // 图鉴：怪物 id -> 击杀数
-  runs: 0, wins: 0, deaths: 0,
-  bestStage: 0, bestTime: 0, entropy: 0,   // entropy: 通关后解锁的难度层级
-  introSeen: false,
-  tutorialDone: false,
-  settings: { sfx: 0.8, music: 0.55, shake: true, flash: true, touchScale: 1, stickFixed: true },   // stickFixed: 触屏摇杆固定在左下角
+  version: 2, data: 0, unlocks: {}, seen: {},
+  runs: 0, wins: 0, deaths: 0, bestStage: 0, bestTime: 0, entropy: 0,
+  introSeen: false, tutorialDone: false, settings: SETTINGS(),
 });
+const record = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const number = (v, fallback = 0, hi = 1e9) => Number.isFinite(v) ? Math.max(0, Math.min(hi, v)) : fallback;
 
-let cache = null;            // 永久进度
-let runCache;                // 进行中的一局：undefined = 还没读过，null = 没有
-let store = null, storeChecked = false, lastWriteOk = true;
+let cache, runCache = null, initialized = false;
+let store, checked = false, writeChecked = false, lastWriteOk = false;
 
-/** 可用的 localStorage；不可用时返回 null */
 function storage() {
-  if (storeChecked) return store;
-  storeChecked = true;
-  try {
-    const s = window.localStorage;
-    const probe = '__collapse-lab-probe__';
-    s.setItem(probe, '1');
-    if (s.getItem(probe) !== '1') throw new Error('readback');
-    s.removeItem(probe);
-    store = s;
-  } catch (_) { store = null; }
+  if (!checked) {
+    checked = true;
+    // 不用写探针决定能否读取：配额已满时，已有存档仍然可以读取。
+    try { store = window.localStorage; } catch (_) { store = null; }
+  }
   return store;
 }
 
-function put(key, obj) {
-  const s = storage();
-  if (!s) { lastWriteOk = false; return false; }
-  try { s.setItem(key, JSON.stringify(obj)); lastWriteOk = true; } catch (_) { lastWriteOk = false; }   // 例如配额已满
+function read(key) {
+  try {
+    const value = JSON.parse(storage()?.getItem(key) || 'null');
+    return record(value) ? value : null;
+  } catch (_) { return null; }
+}
+
+function checkpoint(value) {
+  const r = value?.run;
+  return record(value) && value.v === 1 && record(r)
+    && Number.isInteger(r.stage) && r.stage >= 0
+    && Number.isInteger(r.seed) && r.seed >= 0 && r.seed <= 0xffffffff
+    ? value : null;
+}
+
+function initialize() {
+  if (initialized) return;
+  initialized = true;
+  cache = DEFAULTS();
+  const old = read(KEY);
+  if (old) {
+    for (const key of ['data', 'runs', 'wins', 'deaths', 'bestStage', 'entropy']) cache[key] = Math.floor(number(old[key]));
+    cache.bestTime = number(old.bestTime);
+    for (const key of ['introSeen', 'tutorialDone']) cache[key] = old[key] === true;
+    if (record(old.unlocks)) cache.unlocks = Object.fromEntries(Object.entries(old.unlocks).filter(([, v]) => v === true || (Number.isFinite(v) && v > 0)));
+    if (record(old.seen)) cache.seen = Object.fromEntries(Object.entries(old.seen).filter(([, v]) => Number.isFinite(v) && v >= 0).map(([k, v]) => [k, Math.floor(v)]));
+    const st = record(old.settings) ? old.settings : {};
+    for (const key of ['sfx', 'music']) cache.settings[key] = number(st[key], cache.settings[key], 1);
+    cache.settings.touchScale = Math.max(0.5, number(st.touchScale, 1, 2));
+    for (const key of ['shake', 'flash', 'stickFixed']) if (typeof st[key] === 'boolean') cache.settings[key] = st[key];
+  }
+  // checkpoint:null 是明确的删除标记，绝不从残留的旧键复活一局。
+  const modern = old?.version === 2;
+  runCache = checkpoint(modern ? old.checkpoint : read(LEGACY_RUN_KEY));
+  if (!modern && (old || runCache)) writeSave();
+}
+
+export function loadSave() { initialize(); return cache; }
+export function loadRunSave() { initialize(); return runCache; }
+
+/** 每次写入都包含永久进度和本局存档点，localStorage.setItem 原子地替换整个文档。 */
+export function writeSave() {
+  initialize();
+  writeChecked = true;
+  try {
+    const s = storage();
+    if (!s) throw new Error('storage unavailable');
+    s.setItem(KEY, JSON.stringify({ ...cache, version: 2, checkpoint: runCache }));
+    lastWriteOk = true;
+    // 清理失败不影响已经提交的版本 2 文档；之后也不会再读取这个旧键。
+    try { s.removeItem(LEGACY_RUN_KEY); } catch (_) { /* 已迁移 */ }
+  } catch (_) { lastWriteOk = false; }
   return lastWriteOk;
 }
 
-function get(key) {
-  const s = storage();
-  if (!s) return null;
-  try {
-    const raw = s.getItem(key);
-    if (!raw) return null;
-    const obj = JSON.parse(raw);
-    return obj && typeof obj === 'object' ? obj : null;
-  } catch (_) { return null; }      // 读不到 / 存档损坏：当作没有
-}
-
-/** 存档能不能真正写进浏览器 */
-export function saveStatus() {
-  const ok = !!storage() && lastWriteOk;
-  return { ok, text: ok ? '本机浏览器' : '无法写入（仅本次有效）' };
-}
-
-// ---------------------------------------------------------------- 永久进度
-export function loadSave() {
-  if (cache) return cache;
-  const obj = DEFAULTS();
-  const parsed = get(KEY);
-  if (parsed) {
-    Object.assign(obj, parsed);
-    obj.settings = Object.assign(DEFAULTS().settings, parsed.settings || {});
-    obj.unlocks = parsed.unlocks && typeof parsed.unlocks === 'object' ? parsed.unlocks : {};
-    obj.seen = parsed.seen && typeof parsed.seen === 'object' ? parsed.seen : {};
-    for (const k of ['data', 'runs', 'wins', 'deaths', 'bestStage', 'bestTime', 'entropy']) obj[k] = Number.isFinite(obj[k]) ? obj[k] : 0;
-  }
-  cache = obj;
-  return obj;
-}
-
-export function writeSave() {
-  if (!cache) return false;
-  return put(KEY, cache);
-}
-
-// ---------------------------------------------------------------- 进行中的一局
-/** 读取存档点：{ v, at, name, run }，没有则为 null */
-export function loadRunSave() {
-  if (runCache !== undefined) return runCache;
-  const o = get(RUN_KEY);
-  runCache = o && o.v === 1 && o.run && typeof o.run === 'object' && Number.isFinite(o.run.stage) && Number.isFinite(o.run.seed) ? o : null;
-  return runCache;
-}
-
-export function writeRunSave(obj) {
-  runCache = obj;
-  return put(RUN_KEY, obj);
+export function writeRunSave(value) {
+  initialize();
+  runCache = checkpoint(value);
+  return writeSave();
 }
 
 export function clearRunSave() {
+  initialize();
   runCache = null;
-  const s = storage();
-  if (s) { try { s.removeItem(RUN_KEY); } catch (_) { /* ignore */ } }
+  return writeSave();
 }
 
-// ---------------------------------------------------------------- 清除
-/** 清除全部存档（永久进度 + 进行中的一局），返回新的空白存档 */
+/** 重置的范围只限本游戏进度；保留玩家偏好，其他游戏的键不受影响。 */
 export function resetSave() {
-  cache = DEFAULTS();
-  clearRunSave();
-  const s = storage();
-  if (s) { try { s.removeItem(KEY); } catch (_) { /* ignore */ } }
+  initialize();
+  cache = { ...DEFAULTS(), settings: { ...cache.settings } };
+  runCache = null;
   writeSave();
   return cache;
+}
+
+export function resetSettings() {
+  initialize();
+  Object.assign(cache.settings, SETTINGS());
+  return writeSave();
+}
+
+export function saveStatus() {
+  initialize();
+  if (!writeChecked) {
+    writeChecked = true;
+    try {
+      const s = storage();
+      if (!s) throw new Error('storage unavailable');
+      const probe = '__collapse-lab-probe__';
+      s.setItem(probe, '1'); s.removeItem(probe);
+      lastWriteOk = true;
+    } catch (_) { lastWriteOk = false; }
+  }
+  return { ok: lastWriteOk, text: lastWriteOk ? '本机浏览器' : '更改未写入' };
 }

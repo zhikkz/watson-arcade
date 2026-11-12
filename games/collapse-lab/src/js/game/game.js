@@ -3,7 +3,7 @@ import { W, H, UI_W, VIEW } from '../core/config.js';
 import { input, keyHint } from '../core/input.js';
 import { touch } from '../core/touch.js';
 import { audio } from '../core/audio.js';
-import { loadSave, writeSave, resetSave, loadRunSave, writeRunSave, clearRunSave, saveStatus } from '../core/save.js';
+import { loadSave, writeSave, resetSave, resetSettings, loadRunSave, writeRunSave, clearRunSave, saveStatus } from '../core/save.js';
 import { G } from './state.js';
 import { Run, STAGES } from './run.js';
 import { World } from './world.js';
@@ -44,7 +44,14 @@ export class Game {
 
   // ---------------------------------------------------------------- 存档
   /** 进行中的一局的存档点（没有则为 null） */
-  get runSave() { return loadRunSave(); }
+  get runSave() {
+    const s = loadRunSave();
+    if (!s) return null;
+    const st = STAGES[s.run.stage];
+    if (!st) { clearRunSave(); return null; }
+    // 区域名由当前版本决定，不信任旧存档里的展示文本。
+    return { ...s, name: st.type === 'rest' ? '茶水间' : st.name };
+  }
 
   /** 写入存档点：snap 是进入当前区域时的状态 */
   checkpoint(snap) {
@@ -58,14 +65,14 @@ export class Game {
   /** 存档点之后发生的、不能重来的事（比如数据已经上传）要同步改进存档点里 */
   patchCheckpoint(fn) {
     const s = loadRunSave();
-    if (!s) return;
+    if (!s) return writeSave();
     fn(s.run);
-    writeRunSave(s);
+    return writeRunSave(s);
   }
 
   /** 标题画面「继续」：从存档点所在区域的入口接着玩 */
   continueRun() {
-    const s = loadRunSave();
+    const s = this.runSave;
     if (!s) return false;
     let run = null;
     try { run = Run.restore(G.save, s.run); } catch (_) { run = null; }
@@ -77,23 +84,31 @@ export class Game {
     return true;
   }
 
-  /** 暂停菜单「保存并退出」：存档点在进入本区域时已经写好，这里只是回到标题 */
-  saveAndQuit() {
-    const s = loadRunSave();
-    writeSave();
-    if (s && saveStatus().ok) this.toast(`已保存：下次从「${s.name}」入口继续`, '#9dffb0');
-    else this.toast('这个浏览器无法写入本地存档：关掉页面后进度会丢失', '#ff6b5e');
+  /** 回到标题只保留区域存档点，不会保存区域内当前位置和新收获。 */
+  returnToTitle() {
+    const s = this.runSave;
+    const ok = writeSave();
+    if (s && ok) this.toast(`继续时从「${s.name}」入口重新开始`, '#9dffb0');
+    else this.toast('写入失败：本次更改仅在当前页面有效', '#ff6b5e');
     this.toTitle();
   }
 
-  /** 设置里的「清除全部存档」：永久进度和进行中的一局都清掉，回到标题 */
+  /** 只重置本游戏的永久进度与本局，保留设置。 */
   wipeSaves() {
     G.save = resetSave();
     audio.setVolumes(G.save.settings.sfx, G.save.settings.music);
     touch.fixed = G.save.settings.stickFixed !== false;
     audio.duck(false);
-    this.toast('全部存档已清除', '#ff6b5e');
+    this.toast(saveStatus().ok ? '本游戏进度已重置，设置已保留' : '本页进度已重置，但写入失败；重新打开可能恢复旧进度', '#ff6b5e');
     this.toTitle();
+  }
+
+  restoreSettings() {
+    const ok = resetSettings();
+    audio.setVolumes(G.save.settings.sfx, G.save.settings.music);
+    touch.fixed = G.save.settings.stickFixed;
+    touch.reset();
+    this.toast(ok ? '默认设置已恢复，游戏进度已保留' : '设置已恢复，但未能写入浏览器', ok ? '#9dffb0' : '#ff6b5e');
   }
 
   // ---------------------------------------------------------------- 流程
@@ -108,9 +123,8 @@ export class Game {
 
   startRun(seed) {
     const save = G.save;
-    clearRunSave();            // 新开一局会顶掉旧的存档点
     save.runs++;
-    writeSave();
+    clearRunSave();            // 次数与删除旧存档点一次提交
     G.run = new Run(save, seed === undefined ? (Math.random() * 0xffffffff) >>> 0 : seed);
     this.ui.clear();
     this.transition(() => this.loadStage(0));
@@ -134,7 +148,7 @@ export class Game {
       this.hud.showBanner(st.name, st.sub);
       if (st.type === 'boss') this.world.bossIntroT = 1.6;
     }
-    if (i > (G.save.bestStage || 0)) { G.save.bestStage = i; writeSave(); }
+    if (i > (G.save.bestStage || 0)) G.save.bestStage = i;
     this.checkpoint(snap);
   }
 
@@ -162,7 +176,6 @@ export class Game {
     const run = G.run, save = G.save;
     if (!run || run.finished) return;
     run.finished = true;
-    clearRunSave();            // 这一局已经结束：不能再「继续」
 
     let kept = 0, lost = run.data;
     if (win) { save.data += run.data; kept = run.data; lost = 0; save.wins++; save.entropy = Math.max(save.entropy || 0, run.entropy + 1); audio.music(null); audio.sfx('win'); } else {
@@ -171,7 +184,7 @@ export class Game {
       save.data += kept; lost = run.data - kept;
     }
     if (!save.bestTime || (win && run.time < save.bestTime)) { if (win) save.bestTime = run.time; }
-    writeSave();
+    if (!clearRunSave()) this.toast('结算未能写入浏览器，重新打开可能恢复旧存档点', '#ff6b5e');
     const st = STAGES[Math.min(run.stage, STAGES.length - 1)];
     this.ui.openResult(win, {
       stageName: st.type === 'rest' ? '茶水间' : st.name, kills: run.kills, time: run.time, perks: run.perks.length,
@@ -179,9 +192,13 @@ export class Game {
     });
   }
 
-  abandonRun() { clearRunSave(); this.toTitle(); }
+  abandonRun() {
+    if (!clearRunSave()) this.toast('未能写入放弃操作，重新打开可能恢复旧存档点', '#ff6b5e');
+    this.toTitle();
+  }
 
   toTitle() {
+    this.pending = null;
     this.transition(() => {
       this.world = null; G.world = null; G.run = null;
       this.ui.openTitle();

@@ -71,7 +71,7 @@ export class HUD {
     if (this.savedT > 0) {
       const a = Math.min(1, this.savedT / 0.6);
       ctx.globalAlpha = a; ctx.fillStyle = '#14101a'; ctx.fillRect(bx, by + 30, 7, 7); ctx.fillStyle = '#7be07b'; ctx.fillRect(bx + 1, by + 31, 5, 5); ctx.globalAlpha = 1;
-      drawText(ctx, '进度已自动保存', bx + 11, by + 28, { size: 10, color: '#9dffb0', outline: '#14101a', alpha: a });
+      drawText(ctx, '区域存档点已更新', bx + 11, by + 28, { size: 10, color: '#9dffb0', outline: '#14101a', alpha: a });
     }
     // ---------------- 装备槽
     const slotY = H - 34;

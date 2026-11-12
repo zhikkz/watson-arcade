@@ -72,7 +72,7 @@ export class Run {
   snapshot() {
     const item = (it) => (it ? { id: it.id, lv: it.lv, affixes: it.affixes.slice(), rarity: it.rarity } : null);
     return {
-      seed: this.seed, rng: this.rng.s, stage: this.stage, entropy: this.entropy,
+      seed: this.seed, rng: this.rng.s >>> 0, stage: this.stage, entropy: this.entropy,
       scrolls: { force: this.scrolls.force, tech: this.scrolls.tech, vital: this.scrolls.vital },
       perks: this.perks.slice(), seenPerks: this.seenPerks.slice(),
       weapons: this.weapons.map(item), skill: item(this.skill),
@@ -85,16 +85,17 @@ export class Run {
   /** 从快照还原一局。存档里出现不认识的装备 / 定理（比如版本更新后）会被丢掉，而不是让游戏崩掉 */
   static restore(save, snap) {
     const num = (v, d, lo = 0, hi = 1e9) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
-    const item = (it) => (it && ITEMS[it.id]
-      ? { id: it.id, lv: Math.max(1, Math.floor(num(it.lv, 1))), affixes: (Array.isArray(it.affixes) ? it.affixes : []).filter((a) => AFFIXES[a]), rarity: Math.floor(num(it.rarity, 0, 0, 4)) }
+    const known = (table, id) => Object.prototype.hasOwnProperty.call(table, id);
+    const item = (it) => (it && known(ITEMS, it.id)
+      ? { id: it.id, lv: Math.max(1, Math.floor(num(it.lv, 1))), affixes: (Array.isArray(it.affixes) ? it.affixes : []).filter((a) => known(AFFIXES, a)), rarity: Math.floor(num(it.rarity, 0, 0, 4)) }
       : null);
     const run = new Run(save, num(snap.seed, 1, 0, 0xffffffff));
     run.stage = Math.floor(num(snap.stage, 0, 0, STAGES.length - 1));
     run.entropy = Math.floor(num(snap.entropy, 0, 0, 99));
     const sc = snap.scrolls || {};
     run.scrolls = { force: Math.floor(num(sc.force, 0, 0, 99)), tech: Math.floor(num(sc.tech, 0, 0, 99)), vital: Math.floor(num(sc.vital, 0, 0, 99)) };
-    run.perks = (Array.isArray(snap.perks) ? snap.perks : []).filter((id, i, a) => PERKS[id] && a.indexOf(id) === i);
-    run.seenPerks = (Array.isArray(snap.seenPerks) ? snap.seenPerks : []).filter((id) => PERKS[id]);
+    run.perks = (Array.isArray(snap.perks) ? snap.perks : []).filter((id, i, a) => known(PERKS, id) && a.indexOf(id) === i);
+    run.seenPerks = (Array.isArray(snap.seenPerks) ? snap.seenPerks : []).filter((id) => known(PERKS, id));
     const ws = Array.isArray(snap.weapons) ? snap.weapons : [];
     const w0 = item(ws[0]), w1 = item(ws[1]);
     run.weapons = [w0 && ITEMS[w0.id].kind === 'weapon' ? w0 : makeItem('wrench', 1, run.rng, 0), w1 && ITEMS[w1.id].kind === 'weapon' ? w1 : null];
@@ -114,7 +115,8 @@ export class Run {
     run.kills = Math.floor(num(snap.kills, 0)); run.time = num(snap.time, 0);
     run.dmgTaken = num(snap.dmgTaken, 0); run.eliteKills = Math.floor(num(snap.eliteKills, 0));
     // 随机数状态放在最后恢复：关卡、掉落会和存档时走同一条序列
-    run.rng.s = num(snap.rng, run.seed, 0, 0xffffffff) >>> 0;
+    // 兼容旧版不断累加的 RNG 状态：取低 32 位，不能把大于 uint32 的旧值夹到同一个种子。
+    run.rng.s = (Number.isFinite(snap.rng) ? snap.rng : run.seed) >>> 0;
     return run;
   }
 

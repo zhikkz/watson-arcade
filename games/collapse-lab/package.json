@@ -8,7 +8,7 @@
     "assets": "python3 tools/build_assets.py",
     "build": "node tools/build.mjs",
     "all": "python3 tools/build_assets.py && node tools/build.mjs",
-    "test": "node tools/test/levels.mjs 50",
+    "test": "node --test tools/test/regressions.mjs && node tools/test/levels.mjs 50",
     "test:mobile": "node tools/test/mobile.mjs dist",
     "test:save": "node tools/test/save.mjs"
   },
