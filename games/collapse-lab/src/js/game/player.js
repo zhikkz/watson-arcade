@@ -6,11 +6,9 @@ import { approach, clamp, sign, rnd } from '../core/util.js';
 import { drawSprite, drawSil } from '../core/assets.js';
 import { G } from './state.js';
 import { Weapons } from './weapons.js';
+import { BODY_W, STAND_H, ROLL_H, RUN, ACC_G, ACC_A, FRIC, JUMP_V, DJUMP_V, JUMP_CUT, ledgeTarget } from './movement.js';
 
-const RUN = 152, ACC_G = 1900, ACC_A = 1300, FRIC = 2300;
-const JUMP_V = 505, DJUMP_V = 445, JUMP_CUT = 190;
 const ROLL_SPEED = 300, ROLL_T = 0.36, DASH_T = 0.2, ROLL_CD = 0.24;
-const STAND_H = 50, ROLL_H = 28, BODY_W = 14;
 const COYOTE = 0.1, JUMP_BUF = 0.12;
 
 const IDLE_DUR = [0.19, 0.2, 0.2, 0.1, 0.18, 0.2];
@@ -161,7 +159,7 @@ export class Player {
       const lv = this.world.level;
       const onPlat = this.onGround && this.standingOnPlat();
       if (downHeld && onPlat) {
-        this.dropT = 0.2; this.vy = 80; this.jumpBuf = 0; this.onGround = false; this.coyote = 0; this.ride = null;
+        this.dropThrough();
       } else if (downHeld && !this.onGround && this.coyote <= 0) {
         this.jumpBuf = 0; this.startSlam();
         return;
@@ -202,6 +200,11 @@ export class Player {
       if (t === T_PLAT || t === T_PHASE) plat = true;
     }
     return plat;
+  }
+
+  dropThrough() {
+    this.dropT = 0.2; this.vy = 80; this.jumpBuf = 0;
+    this.onGround = false; this.coyote = 0; this.ride = null;
   }
 
   doJump(v, isDouble) {
@@ -256,6 +259,14 @@ export class Player {
   updateRoll(dt, ax) {
     const lv = this.world.level;
     this.rollT -= dt;
+    // 翻滚结束却站不起来时改为可控的低姿移动；不能一直被原方向推在墙上。
+    if (this.rollT <= 0 && !this.canStand()) {
+      this.iframe = 0;
+      this.moveHoriz(dt, ax, 0.62);
+      this.applyGravity(dt, true);
+      if (this.jumpBuf > 0 && input.down('down') && this.onGround && this.standingOnPlat()) this.dropThrough();
+      return;
+    }
     const sp = ROLL_SPEED * (this.rollAir ? 1.1 : 1);
     this.vx = this.rollDir * (this.rollT > 0.08 ? sp : sp * 0.62);
     if (this.rollAir) this.vy = 0; else this.applyGravity(dt, true);
@@ -267,7 +278,6 @@ export class Player {
       this.setState('normal'); this.doJump(JUMP_V, false); this.vx = this.rollDir * sp * 0.85; return;
     }
     if (this.rollT <= 0) {
-      if (!this.canStand()) { this.rollT = 0.05; this.iframe = 0; return; }   // 头顶有东西：继续滑
       this.setState('normal');
       this.vx = this.rollDir * this.moveSpeed() * 0.8;
     }
@@ -325,23 +335,12 @@ export class Player {
   tryLedge(ax) {
     if (this.state !== 'normal' || this.onGround || this.hitWall === 0 || ax !== this.hitWall) return;
     if (this.vy < -140) return;
-    const lv = this.world.level;
-    const dir = this.hitWall;
-    const tx = Math.floor((this.x + dir * (this.w / 2 + 2)) / TILE);
-    const top = this.y - this.h;
-    for (let ty = Math.floor((top - 4) / TILE); ty <= Math.floor((top + 30) / TILE); ty++) {
-      if (!lv.isSolid(tx, ty) || lv.isSolid(tx, ty - 1)) continue;
-      const ledgeY = ty * TILE;
-      if (ledgeY < top - 6 || ledgeY > top + 30) continue;
-      const fx = dir > 0 ? tx * TILE + this.w / 2 + 2 : (tx + 1) * TILE - this.w / 2 - 2;
-      if (lv.rectSolid(fx - this.w / 2, ledgeY - STAND_H, this.w, STAND_H)) continue;
-      if (lv.rectSolid(this.x - this.w / 2, ledgeY - STAND_H, this.w, this.y - (ledgeY - STAND_H) - 1)) continue;
-      this.climb = { x0: this.x, y0: this.y, x1: fx, y1: ledgeY, t: 0 };
-      this.setState('climb');
-      this.vx = this.vy = 0;
-      audio.sfx('step');
-      return;
-    }
+    const target = ledgeTarget(this.world.level, this, this.hitWall);
+    if (!target) return;
+    this.climb = { x0: this.x, y0: this.y, x1: target.x, y1: target.y, t: 0 };
+    this.setState('climb');
+    this.vx = this.vy = 0;
+    audio.sfx('step');
   }
 
   updateClimb(dt) {

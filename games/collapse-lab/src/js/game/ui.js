@@ -232,9 +232,8 @@ class TerminalScreen extends Screen {
     const run = G.run, save = G.save;
     this.banked = run.data;
     save.data += run.data; run.data = 0;
-    writeSave();
-    // 数据已经落袋：存档点里的「未上传数据」也要清零，否则读档可以重复上传
-    this.game.patchCheckpoint((r) => { r.data = 0; });
+    // 永久余额与存档点携带的数据在同一次写入中改变，失败后也不会只保存一半。
+    if (!this.game.patchCheckpoint((r) => { r.data = 0; })) this.game.toast('数据仅在当前页面有效：存档写入失败', '#ff6b5e');
     if (this.banked > 0) audio.sfx('data');
     this.scroll = 0;
   }
@@ -254,10 +253,10 @@ class TerminalScreen extends Screen {
     if (!m || save.unlocks[m.id]) { audio.sfx('deny'); return; }
     if (save.data < m.cost) { audio.sfx('deny'); this.game.hud.toast('数据不足', '#ff6b5e'); return; }
     save.data -= m.cost; save.unlocks[m.id] = true;
-    writeSave();
+    const saved = writeSave();
     audio.sfx('perk');
     G.run.recalc();
-    this.game.hud.toast('已解锁：' + m.name, COLORS.data);
+    this.game.hud.toast(saved ? '已解锁：' + m.name : '解锁仅在当前页面有效：存档写入失败', saved ? COLORS.data : '#ff6b5e');
   }
   draw(ctx) {
     dim(ctx, 0.75);
@@ -324,6 +323,37 @@ class MenuScreen extends Screen {
     });
     if (this.o.extra) this.o.extra(ctx, x + bw + 20);
     drawText(ctx, hint(this.o.hint || '↑/↓ 选择　←/→ 调整　确认键 决定　翻滚键 返回', this.o.hintTouch || '点选项目　·　右上角「返回」'), W / 2, H - 20, { size: 10, color: '#9aa0b4', align: 'center', outline: INK });
+  }
+}
+
+// 破坏性操作使用独立确认页，默认选中取消；范围和后果在按键前完整展示。
+class ConfirmScreen extends Screen {
+  constructor(ui, title, text, label, action) {
+    super(ui); this.title = title; this.text = text;
+    this.items = [
+      { label: '取消', action: () => this.back() },
+      { label, danger: true, action: () => { this.close(); action(); } },
+    ];
+  }
+  get canBack() { return true; }
+  update(dt) {
+    super.update(dt);
+    if (!this.nav(2)) this.nav(2, true);
+    if (input.menuCancel()) this.back();
+    else if (input.menuConfirm() && this.t > 0.2) this.items[this.sel].action();
+  }
+  draw(ctx) {
+    dim(ctx, 0.86);
+    panel(ctx, 76, 58, 488, 242);
+    drawText(ctx, this.title, W / 2, 76, { size: 12, color: '#ffe9a0', align: 'center' });
+    drawText(ctx, this.text, 100, 108, { size: 12, color: '#dfe3ee', maxWidth: 440, lineGap: 7 });
+    this.items.forEach((it, i) => {
+      const x = 128 + i * 200;
+      box(ctx, x, 252, 184, 26, this.sel === i);
+      drawText(ctx, it.label, x + 92, 259, { size: 12, color: it.danger ? '#ff8a80' : '#ffffff', align: 'center' });
+      this.hot(x, 252, 184, 26, i, it.action);
+    });
+    drawText(ctx, hint('方向键选择　确认键决定　翻滚键取消', '点选按钮　·　右上角「返回」取消'), W / 2, 286, { size: 8, color: '#9aa0b4', align: 'center' });
   }
 }
 
@@ -447,7 +477,7 @@ class TitleScreen extends Screen {
   constructor(ui) {
     super(ui);
     this.pausesWorld = false;
-    this.hasSave = null; this.armNew = false;
+    this.hasSave = null;
     this.build();
   }
   /** 菜单项随「有没有存档点」变化：有存档时第一项是「继续」 */
@@ -455,12 +485,11 @@ class TitleScreen extends Screen {
     const s = this.game.runSave;
     const has = !!s;
     if (has === this.hasSave) return;
-    this.hasSave = has; this.armNew = false;
+    this.hasSave = has;
     this.items = [];
     if (has) {
       this.items.push([() => { const c = this.game.runSave; return c ? `继续 · ${c.name}` : '继续'; }, () => this.game.continueRun()]);
-      // 已有存档时重开要再确认一次，免得手滑把进度顶掉
-      this.items.push([() => (this.armNew ? '再点一次：放弃旧进度' : '新的实验'), () => { if (!this.armNew) { this.armNew = true; this.armSel = this.sel; return; } this.game.beginFromTitle(); }]);
+      this.items.push(['新的实验', () => this.ui.confirm('开始新的实验？', '当前这一局和区域存档点将被替换。\n永久解锁、数据库存、图鉴、统计和设置都会保留。', '放弃本局并开始', () => this.game.beginFromTitle())]);
     } else this.items.push(['开始实验', () => this.game.beginFromTitle()]);
     this.items.push(
       ['怪物图鉴', () => this.ui.push(new BestiaryScreen(this.ui))],
@@ -475,7 +504,6 @@ class TitleScreen extends Screen {
     super.update(dt);
     this.build();
     this.nav(this.items.length);
-    if (this.armNew && this.sel !== this.armSel) this.armNew = false;
     if (input.menuConfirm() && this.t > 0.3) { audio.sfx('select'); this.items[this.sel][1](); }
   }
   /** 背景画在主画面上，铺满整个宽度（ox = 640 设计区的左边缘） */
@@ -514,7 +542,7 @@ class TitleScreen extends Screen {
     drawText(ctx, '张震的不可逆之夜', W / 2, 102 + bob, { size: 12, color: '#62e6ff', align: 'center', outline: INK });
     // 菜单
     this.build();
-    const bw = 176, x = (W - bw) / 2, n = this.items.length;
+    const bw = 200, x = (W - bw) / 2, n = this.items.length;
     const gap = n > 5 ? 24 : n > 4 ? 26 : 28, y0 = n > 5 ? 136 : n > 4 ? 144 : 150, bh = n > 5 ? 20 : 22;
     this.items.forEach(([label, fn], i) => {
       const y = y0 + i * gap, sel = i === this.sel;
@@ -525,6 +553,8 @@ class TitleScreen extends Screen {
     const k = (a) => this.game.keyLabel(a);
     drawText(ctx, isTouch() ? '点选菜单开始　·　游戏中左手拖动摇杆，右手按圆键' : `${k('up')}/${k('down')} 选择　${k('confirm')} 确认　·　${k('left')}/${k('right')} 移动　${k('jump')} 跳　${k('atk1')} 攻击　${k('roll')} 翻滚`, W / 2, H - 72, { size: 10, color: '#c8ccd6', align: 'center', outline: INK });
     drawText(ctx, `实验次数 ${save.runs}　通关 ${save.wins}　熵等级 ${save.entropy}　数据库存 {c}${save.data}{/}`, W / 2, H - 56, { size: 10, color: '#9aa0b4', align: 'center', outline: INK });
+    if (this.hasSave) drawText(ctx, '继续将从区域入口重新开始，区域内进度不保留', W / 2, H - 24, { size: 10, color: '#c8ccd6', align: 'center', outline: INK });
+    if (!saveStatus().ok) drawText(ctx, '存档写入失败：本次更改仅在当前页面有效', W / 2, H - 10, { size: 8, color: '#ff8a80', align: 'center', outline: INK });
     // 竖着拿手机时画面已被旋转成横屏：提醒把手机横过来
     if (VIEW.rot && Math.floor(t * 1.5) % 4 !== 3) drawText(ctx, '本游戏为横屏游玩　·　请把手机横过来握持', W / 2, H - 40, { size: 10, color: '#62e6ff', align: 'center', outline: INK });
   }
@@ -542,6 +572,7 @@ export class UI {
     this.armed = null; this.armedScreen = null;
   }
   get active() { return this.stack[this.stack.length - 1] || null; }
+  confirm(title, text, label, action) { return this.push(new ConfirmScreen(this, title, text, label, action)); }
   get blocking() { const a = this.active; return !!(a && a.pausesWorld); }
   // 界面弹出时松开所有虚拟按键（手指还按着的摇杆 / 攻击不会带进菜单）
   push(s) { this.stack.push(s); input.consumeMenu(); touch.reset(); this.armed = null; return s; }
@@ -660,10 +691,9 @@ export class UI {
   }
   openSettings() {
     const st = G.save.settings;
-    const apply = () => { audio.setVolumes(st.sfx, st.music); writeSave(); };
+    const apply = () => { audio.setVolumes(st.sfx, st.music); if (!writeSave()) this.game.toast('设置未能写入浏览器，仅在当前页面有效', '#ff6b5e'); };
     const pct = (v) => Math.round(v * 100) + '%';
     const vol = (v, d, wrap) => { const n = Math.round((v + d * 0.1) * 10) / 10; return wrap && n > 1 ? 0 : clamp(n, 0, 1); };
-    let resetArm = false;
     const items = [
       // wrap：点击调整时到 100% 后回到 0
       { label: '音效音量', value: () => pct(st.sfx), adjust: (d, wrap) => { st.sfx = vol(st.sfx, d, wrap); apply(); audio.sfx('select'); } },
@@ -673,23 +703,28 @@ export class UI {
       { label: '全屏', value: () => (document.fullscreenElement ? '开' : '关'), action: () => this.game.toggleFullscreen() },
       // 触屏摇杆：固定在左下角（默认），或者按在哪里就出现在哪里
       ...(VIEW.touch || isTouch() ? [{ label: '摇杆位置', value: () => (st.stickFixed !== false ? '固定' : '跟随手指'), adjust: () => { st.stickFixed = st.stickFixed === false; touch.fixed = st.stickFixed; touch.reset(); apply(); } }] : []),
-      { label: '存档位置', value: () => saveStatus().text },
-      // 清档：永久进度和进行中的一局都清掉，然后回到标题
-      { label: () => (resetArm ? '再按一次：确认清除' : '清除全部存档'), danger: true, action: () => { if (!resetArm) { resetArm = true; return; } resetArm = false; this.game.wipeSaves(); } },
+      { label: '存档管理', value: () => saveStatus().text, action: () => this.openSaveManager() },
+      { label: '恢复默认设置', action: () => this.confirm('恢复默认设置？', '音量、画面效果和触屏偏好将恢复默认值。\n永久进度和本局区域存档点都会保留。', '恢复设置', () => this.game.restoreSettings()) },
     ];
-    this.push(new MenuScreen(this, '设置', items, { hintTouch: '点一下切换 / 调整（音量到 100% 后回到 0）　·　右上角「返回」', onMove: () => { resetArm = false; } }));
+    this.push(new MenuScreen(this, '设置', items, { hintTouch: '点一下切换 / 调整（音量到 100% 后回到 0）　·　右上角「返回」' }));
+  }
+  openSaveManager() {
+    const description = '存档只属于本机浏览器的当前站点，不会跨设备同步。\n\n永久解锁、图鉴、统计和设置在变化时保存。\n本局只在进入区域时保存；继续会回到区域入口，区域内的位置、战斗与收获不会保留。\n\n更换浏览器、域名或端口会使用另一份存档；同一站点的不同路径共享存档。';
+    this.push(new MenuScreen(this, '存档管理', [
+      { label: '查看存档规则', action: () => this.push(new TextScreen(this, '存档规则', description, { x: 70, y: 60, w: 500 })) },
+      { label: '重试写入存档', action: () => this.game.toast(writeSave() ? '本游戏存档已写入' : '写入失败：本次更改仅在当前页面有效', saveStatus().ok ? '#9dffb0' : '#ff6b5e') },
+      { label: '重置本游戏进度', danger: true, action: () => this.confirm('重置坍缩实验室进度？', '将删除本机浏览器当前站点中，坍缩实验室的永久解锁、数据库存、图鉴、统计和本局存档点，并回到标题。\n\n游戏设置和其他游戏的存档会保留。此操作无法撤销。', '重置本游戏进度', () => this.game.wipeSaves()) },
+    ], { hint: '↑/↓ 选择　确认键 决定　翻滚键 返回', hintTouch: '点选项目　·　右上角「返回」' }));
   }
   openPause() {
     const run = G.run;
-    let quitArm = false;
     const items = [
       { label: '继续', action: () => { this.remove(pause); audio.duck(false); } },
-      { label: '保存并退出', action: () => { audio.duck(false); this.game.saveAndQuit(); } },
+      { label: '回到标题', action: () => this.confirm('回到标题？', `继续时会从「${this.game.runSave?.name || '当前区域'}」入口重新开始。\n本区域内的位置、战斗和新收获不会保存；永久解锁与设置会保留。${saveStatus().ok ? '' : '\n\n存档写入失败：关掉页面可能丢失本次更改。'}`, '回到标题', () => { audio.duck(false); this.game.returnToTitle(); }) },
       { label: '操作说明', action: () => this.openHelp() },
       { label: '设置', action: () => this.openSettings() },
       { label: '怪物图鉴', action: () => this.openBestiary() },
-      // 放弃 = 删掉存档点，要再确认一次
-      { label: () => (quitArm ? '再按一次：确认放弃' : '放弃本局'), danger: true, action: () => { if (!quitArm) { quitArm = true; return; } audio.duck(false); this.game.abandonRun(); } },
+      { label: '放弃本局', danger: true, action: () => this.confirm('放弃本局？', '将删除本局区域存档点，本局未上传的数据也会丢失。\n永久解锁、数据库存、图鉴、统计和设置会保留。', '放弃本局', () => { audio.duck(false); this.game.abandonRun(); }) },
     ];
     const extra = (ctx, x) => {
       const st = STAGES[run.stage];
@@ -697,15 +732,16 @@ export class UI {
       drawText(ctx, `文献　{r}力学 ${run.scrolls.force}{/}　{p}电磁 ${run.scrolls.tech}{/}　{g}热学 ${run.scrolls.vital}{/}`, x, 78, { size: 10, color: '#c8ccd6' });
       const cp = this.game.runSave;
       drawText(ctx, saveStatus().ok ? `{g}存档点{/}　${cp ? cp.name : st.name || '茶水间'}入口（每进入一个区域自动保存）` : '{r}这个浏览器无法写入本地存档，进度只在本次有效{/}', x, 96, { size: 10, color: '#c8ccd6' });
-      drawText(ctx, '已领悟的定理', x, 118, { size: 10, color: '#ffe9a0' });
-      let cy = 134;
+      drawText(ctx, '区域内进度不保留；继续时从入口重新开始', x, 112, { size: 10, color: '#c8ccd6', maxWidth: W - x - 16 });
+      drawText(ctx, '已领悟的定理', x, 142, { size: 10, color: '#ffe9a0' });
+      let cy = 158;
       if (!run.perks.length) drawText(ctx, '（还没有——去茶水间的黑板看看）', x, cy, { size: 10, color: '#6a7088' });
       for (const id of run.perks) {
         cy += drawText(ctx, `{y}${PERKS[id].name}{/}　${PERKS[id].desc}`, x, cy, { size: 10, color: '#c8ccd6', maxWidth: W - x - 16, lineGap: 3 }) + 5;
         if (cy > H - 40) break;
       }
     };
-    const pause = new MenuScreen(this, '暂停', items, { side: true, extra, hint: '↑/↓ 选择　确认键 决定　翻滚键 继续', hintTouch: '点选项目　·　右上角「返回」继续游戏', onClose: () => audio.duck(false), onMove: () => { quitArm = false; } });
+    const pause = new MenuScreen(this, '暂停', items, { side: true, extra, hint: '↑/↓ 选择　确认键 决定　翻滚键 继续', hintTouch: '点选项目　·　右上角「返回」继续游戏', onClose: () => audio.duck(false) });
     pause.hallReturn = true;
     audio.duck(true);
     this.push(pause);

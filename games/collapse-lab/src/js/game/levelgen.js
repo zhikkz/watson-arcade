@@ -1,15 +1,24 @@
 // 程序关卡生成：格子路径 + 房间模板 + 支线房 + 可达性校验
-import { TILE, CELL_W, CELL_H, T_EMPTY, T_SOLID, T_PLAT, T_SPIKE, T_ACID, T_PHASE } from '../core/config.js';
-import { RNG } from '../core/util.js';
+import { TILE, CELL_W, CELL_H, GRAVITY, MAX_FALL, STEP, T_EMPTY, T_SOLID, T_PLAT, T_SPIKE, T_ACID, T_PHASE } from '../core/config.js';
+import { RNG, approach } from '../core/util.js';
 import { Level } from './level.js';
 import { TEMPLATES, FIXED, ROOM_W, ROOM_H } from './templates.js';
 import { BIOMES } from './biomes.js';
 import { assets } from '../core/assets.js';
+import { BODY_W, STAND_H, ROLL_H, RUN, ACC_A, FRIC, JUMP_V, DJUMP_V, ledgeTarget } from './movement.js';
 
 const HOLE_X0 = 11, HOLE_X1 = 14;       // 上下连通口所在的格内列（含边框坐标）
 const DOOR_Y0 = 11, DOOR_Y1 = 13;       // 左右门洞所在的格内行
 const DIRS = { L: [-1, 0, 'R'], R: [1, 0, 'L'], U: [0, -1, 'D'], D: [0, 1, 'U'] };
 const GROUND_MARKS = 'eEbTSVI@XJ';
+
+function safeTemplate(tag) {
+  const base = TEMPLATES.find((t) => t.tags.includes('start'));
+  const row = new Array(ROOM_W).fill('.');
+  const marks = { start: [[3, '@'], [9, 'I'], [14, 'I']], exit: [[4, 'e'], [17, 'X']], shop: [[11, 'V']], treasure: [[7, 'e'], [17, 'T']], scroll: [[7, 'e'], [17, 'S']], normal: [[4, 'e'], [8, 'b'], [19, 'e']] };
+  for (const [x, ch] of marks[tag] || marks.normal) row[x] = ch;
+  return { name: '安全通道·' + tag, rows: [...base.rows.slice(0, -1), row.join('')] };
+}
 
 function mirrorRows(rows) { return rows.map((r) => r.split('').reverse().join('')); }
 
@@ -138,7 +147,8 @@ function resolveSpawns(level, raw, rng, biome, run, out) {
   for (const s of raw) {
     const { ch, tx, ty } = s;
     const px = tx * TILE + TILE / 2;
-    const gy = GROUND_MARKS.includes(ch) ? groundY(tx, ty) : (ty + 1) * TILE;
+    const ground = GROUND_MARKS.includes(ch), first = out.length;
+    const gy = ground ? groundY(tx, ty) : (ty + 1) * TILE;
     switch (ch) {
       case 'e':
         if (rng.chance(pEnemy)) out.push({ type: 'enemy', id: rng.weighted(B.spawn.ground.filter((e) => (e[2] || 0) <= depth)), x: px, y: gy, elite: rng.chance(eliteP) });
@@ -166,6 +176,7 @@ function resolveSpawns(level, raw, rng, biome, run, out) {
       }
       default: break;
     }
+    if (ground) for (let i = first; i < out.length; i++) out[i].ground = true;
   }
 }
 
@@ -173,22 +184,27 @@ function resolveSpawns(level, raw, rng, biome, run, out) {
 function buildNav(level, spawns) {
   const W = level.w, H = level.h;
   const solid = (x, y) => level.isSolid(x, y);
-  const floorT = (x, y) => { const t = level.get(x, y); return t === T_SOLID || t === T_PLAT || t === T_PHASE || t === 4 || extra.has(y * W + x); };
-  const extra = new Set();     // 移动平台的虚拟落脚格
+  // 主路线必须依靠永久落脚点。移动平台和会消失的平台不能充当必经通路。
+  const floorT = (x, y) => level.isSolid(x, y) || level.get(x, y) === T_PLAT;
   const springs = new Set();
   for (const s of spawns) {
-    if (s.type === 'mover') for (let d = -s.range; d <= s.range; d++) extra.add(s.ty * W + s.tx + d);
     if (s.type === 'spring') springs.add((s.ty + 1) * W + s.tx);
   }
-  const crawl = (x, y) => floorT(x, y) && !solid(x, y - 1) && !solid(x, y - 2);
-  const stand = (x, y) => crawl(x, y) && !solid(x, y - 3);
-  const clearRect = (x0, y0, x1, y1) => {
-    if (x0 > x1) { const t = x0; x0 = x1; x1 = t; }
-    if (y0 > y1) { const t = y0; y0 = y1; y1 = t; }
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (solid(x, y)) return false;
-    return true;
+  const clearBody = (x, y, h) => !level.rectSolid((x + 0.5) * TILE - BODY_W / 2, y * TILE - h, BODY_W, h);
+  const low = new Uint8Array(W * H), high = new Uint8Array(W * H);
+  for (let y = 1; y < H; y++) for (let x = 1; x < W - 1; x++) if (floorT(x, y)) {
+    low[y * W + x] = +clearBody(x, y, ROLL_H);
+    high[y * W + x] = +clearBody(x, y, STAND_H);
+  }
+  const crawl = (x, y) => level.inside(x, y) && !!low[y * W + x];
+  const stand = (x, y) => level.inside(x, y) && !!high[y * W + x];
+  const dropTo = (x, y) => {
+    for (let yy = y; yy < H; yy++) {
+      if (!clearBody(x, yy, ROLL_H)) return -1;
+      if (floorT(x, yy)) return yy;
+    }
+    return -1;
   };
-  const dropTo = (x, y) => { for (let yy = y; yy < H; yy++) { if (solid(x, yy - 1)) return -1; if (floorT(x, yy)) return crawl(x, yy) ? yy : -1; } return -1; };
   const edges = (x, y) => {
     const out = [];
     const canStand = stand(x, y);
@@ -198,29 +214,38 @@ function buildNav(level, spawns) {
       else if (!solid(nx, y - 1) && !solid(nx, y - 2) && !floorT(nx, y)) { const yy = dropTo(nx, y + 1); if (yy > 0) out.push(nx, yy); }
     }
     const t = level.get(x, y);
-    if (t === T_PLAT || t === T_PHASE || extra.has(y * W + x)) { const yy = dropTo(x, y + 1); if (yy > 0) out.push(x, yy); }
+    if (t === T_PLAT) { const yy = dropTo(x, y + 1); if (yy > 0) out.push(x, yy); }
     if (!canStand) return out;
     const spring = springs.has(y * W + x);
-    const maxUp = spring ? 10 : 5;
-    for (let dy = 1; dy <= maxUp; dy++) {
-      const maxDx = spring ? 5 : dy <= 3 ? 5 : 3;
-      for (let dx = -maxDx; dx <= maxDx; dx++) {
-        const nx = x + dx, ny = y - dy;
-        if (!stand(nx, ny)) continue;
-        // 先上后平移，或先平移后上
-        const a = clearRect(x, ny - 3, x, y - 1) && clearRect(x, ny - 3, nx, ny - 1);
-        const b = clearRect(x, y - 3, nx, y - 1) && clearRect(nx, ny - 3, nx, y - 1);
-        if (a || (b && dx !== 0)) out.push(nx, ny);
-      }
-    }
+    // 用真实重力、二段跳和碰撞验证弧线。旧的「先上再平移」矩形连线会穿过墙角，
+    // 还会把顶头后实际上跳不高的路线判成可达。
     for (let dx = -6; dx <= 6; dx++) {
-      if (Math.abs(dx) < 2) continue;
       const nx = x + dx;
-      for (let k = 0; k <= 9; k++) {
-        const ny = y + k;
-        if (!crawl(nx, ny)) continue;
-        if (clearRect(x, y - 4, nx, y - 1) && clearRect(nx, y - 4, nx, ny - 1)) { out.push(nx, ny); break; }
-        if (solid(nx, ny)) break;
+      let target = false;
+      for (let ny = Math.max(1, y - (spring ? 15 : 9)); ny <= Math.min(H - 1, y + 9); ny++) if (stand(nx, ny)) { target = true; break; }
+      if (!target) continue;
+      for (const double of [false, true]) {
+        const b = { x: (x + 0.5) * TILE, y: y * TILE, w: BODY_W, h: STAND_H, vx: 0, vy: spring ? -860 : -JUMP_V, onGround: false };
+        let jumped = !double;
+        for (let frame = 0; frame < 110; frame++) {
+          // 顶头时不要立即消耗二段跳；离开低天花板后再起跳才能到达侧面的高台。
+          if (!jumped && frame >= 16 && b.vy >= -40) { b.vy = -DJUMP_V; jumped = true; }
+          const delta = (nx + 0.5) * TILE - b.x;
+          const ax = Math.abs(delta) > Math.abs(b.vx) * STEP + 0.1 ? Math.sign(delta) : 0;
+          b.vx = approach(b.vx, ax * RUN, (ax ? ACC_A : FRIC * 0.35) * STEP);
+          b.vy = Math.min(MAX_FALL, b.vy + GRAVITY * (b.vy > 0 ? 1.12 : 1) * STEP);
+          level.moveBody(b, STEP);
+          if (!b.onGround && b.hitWall && b.hitWall === ax && b.vy >= -140) {
+            const ledge = ledgeTarget(level, b, ax);
+            if (ledge) { b.x = ledge.x; b.y = ledge.y; b.onGround = true; }
+          }
+          if (b.onGround) {
+            const lx = Math.floor(b.x / TILE), ly = Math.round(b.y / TILE);
+            if (stand(lx, ly)) out.push(lx, ly);
+            break;
+          }
+          if (b.y > (y + 10) * TILE) break;
+        }
       }
     }
     return out;
@@ -229,6 +254,13 @@ function buildNav(level, spawns) {
 }
 
 export function validateLevel(level, spawns) {
+  const phase = level.phaseOn;
+  level.phaseOn = false;
+  try { return validateStaticLevel(level, spawns); }
+  finally { level.phaseOn = phase; }
+}
+
+function validateStaticLevel(level, spawns) {
   const nav = buildNav(level, spawns);
   const W = nav.W;
   const key = (x, y) => y * W + x;
@@ -261,6 +293,13 @@ export function validateLevel(level, spawns) {
     if (s.type === 'exit') exitKey = k;
   }
   if (exitKey < 0) return { ok: false, why: 'no exit' };
+  // 玩家还可能通过攀沿或空中冲刺落在图搜索没有走到的地面上。
+  // 这些位置也必须属于连通区域，不能因「没从入口搜索到」而漏掉困人的坑。
+  const isolated = [];
+  for (let y = 1; y < nav.H; y++) for (let x = 1; x < W - 1; x++) {
+    if (nav.crawl(x, y) && !seen.has(key(x, y))) isolated.push([x, y]);
+  }
+  if (isolated.length) return { ok: false, why: 'isolated floor', isolated };
   // 反向：所有可达点都必须能走到出口（不存在困死的坑）
   const rev = new Map();
   for (const [k, list] of seen) for (const t of list || []) { if (!rev.has(t)) rev.set(t, []); rev.get(t).push(k); }
@@ -351,18 +390,21 @@ export function generateLevel(run, biome, seed) {
   const depth = run.depth;
   const GW = Math.min(8, 6 + Math.floor((depth + 1) / 2)), GH = 3;
   let lastWhy = '';
-  for (let attempt = 0; attempt < 40; attempt++) {
+  for (let attempt = 0; attempt < 16; attempt++) {
     const rng = new RNG((seed + attempt * 7919) >>> 0);
     const plan = planGrid(rng, GW, GH, depth);
     const level = new Level(GW * CELL_W, GH * CELL_H, biome);
     level.seed = (seed + attempt) | 0;
+    level.repairedPlatforms = 0;
     const raw = [];
     const rooms = [];
     const used = [];
     for (const row of plan.grid) for (const c of row) {
       if (!c) continue;
       const tag = c.type;
-      const tpl = pickTemplate(rng, tag, c.open, biome, used.slice(-3));
+      // 高复杂度组合多次失败后使用开阔房间，仍保留随机路径、特殊房和奖励。
+      // 兜底也必须通过同一套碰撞校验，不能把未通过的地图交给玩家。
+      const tpl = attempt >= 8 ? safeTemplate(tag) : pickTemplate(rng, tag, c.open, biome, used.slice(-3));
       used.push(tpl.name);
       const flip = rng.chance(0.5);
       stampCell(level, c, tpl, flip, rng, biome, raw);
@@ -379,7 +421,18 @@ export function generateLevel(run, biome, seed) {
       const tx = c.x * CELL_W + rng.pick([4, 5, 19, 20]), ty = c.y * CELL_H + CELL_H - 2;
       if (level.get(tx, ty) === T_EMPTY && level.isSolid(tx, ty + 1)) spawns.push({ type: type === 'treasure' ? 'chest' : 'scroll', x: tx * TILE + TILE / 2, y: (ty + 1) * TILE });
     }
-    const v = validateLevel(level, spawns);
+    let v = validateLevel(level, spawns);
+    // 一些模板在厚台面下面留了无法连通的零散单向台阶。只移除这些孤立台阶，
+    // 再让静态奖励落到新的地面并完整复验，优先保留本来可玩的房间组合。
+    for (let repair = 0; repair < 3 && v.isolated?.length && v.isolated.every(([x, y]) => level.get(x, y) === T_PLAT); repair++) {
+      level.repairedPlatforms += v.isolated.length;
+      for (const [x, y] of v.isolated) level.set(x, y, T_EMPTY);
+      for (const s of spawns) if (s.ground || ['chest', 'scroll'].includes(s.type)) {
+        const y = level.groundBelow(s.x, s.y, level.h);
+        if (y !== null) { s.y = y; if (s.type === 'spring') s.ty = y / TILE - 1; }
+      }
+      v = validateLevel(level, spawns);
+    }
     if (!v.ok) { lastWhy = v.why; continue; }
     decorate(level, rooms, rng, biome);
     level.spawns = spawns;
